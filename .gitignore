@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# 虚拟环境
+.venv/
+venv/
+
+# IDE / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
