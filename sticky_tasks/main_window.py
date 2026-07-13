@@ -4,8 +4,8 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QScrollArea, QFrame,
     QApplication, QMenu,
 )
-from PySide6.QtCore import Qt, QEvent
-from PySide6.QtGui import QCursor
+from PySide6.QtCore import Qt, QEvent, QSize
+from PySide6.QtGui import QCursor, QPixmap, QPainter, QColor, QIcon
 
 from .task_store import TaskStore
 from .task_item import TaskItem
@@ -137,11 +137,13 @@ class MainWindow(QWidget):
         self.scroll.setWidget(self.list_widget)
         v.addWidget(self.scroll, 1)
 
-        # ---- 底部:已完成按钮(触发面板向下展开)----
-        self.footer_btn = QPushButton("已完成 (0)  >")
+        # ---- 底部:已完成按钮(触发面板向下展开,chevron 图标表示展开/收起)----
+        self.footer_btn = QPushButton("已完成 (0)")
         self.footer_btn.setObjectName("footerBtn")
         self.footer_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self.footer_btn.setFocusPolicy(Qt.NoFocus)
+        self.footer_btn.setIconSize(QSize(14, 14))
+        self.footer_btn.setIcon(QIcon(self._chevron_pixmap("right")))
         self.footer_btn.clicked.connect(self.toggle_completed)
         v.addWidget(self.footer_btn)
 
@@ -275,11 +277,40 @@ class MainWindow(QWidget):
 
     def _footer_text(self):
         n = len(self.store.completed_tasks())
-        arrow = "▽" if self._completed_expanded else ">"
-        return f"已完成 ({n})  {arrow}"
+        return f"已完成 ({n})"
 
     def _update_footer(self):
         self.footer_btn.setText(self._footer_text())
+        # chevron 图标:折叠朝右 >,展开朝下 v
+        self.footer_btn.setIcon(
+            QIcon(self._chevron_pixmap("down" if self._completed_expanded else "right"))
+        )
+
+    def _chevron_pixmap(self, direction, size=14, color=QColor("#9aa0a6")):
+        """用 QPainter 画矢量 chevron(不依赖 SVG 插件,跨系统不糊)。"""
+        pm = QPixmap(size, size)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        pen = p.pen()
+        pen.setColor(color)
+        pen.setWidthF(max(2.0, size / 7.0))
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        p.setPen(pen)
+        s = float(size)
+        if direction == "down":
+            p.drawLine(int(s * 0.22), int(s * 0.38),
+                       int(s * 0.50), int(s * 0.64))
+            p.drawLine(int(s * 0.50), int(s * 0.64),
+                       int(s * 0.78), int(s * 0.38))
+        else:  # right
+            p.drawLine(int(s * 0.38), int(s * 0.22),
+                       int(s * 0.64), int(s * 0.50))
+            p.drawLine(int(s * 0.64), int(s * 0.50),
+                       int(s * 0.38), int(s * 0.78))
+        p.end()
+        return pm
 
     # ---- 锁定/解锁 ----
     def set_locked(self, locked):

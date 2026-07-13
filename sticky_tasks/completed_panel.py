@@ -2,7 +2,7 @@
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame, QScrollArea,
-    QMenu,
+    QMenu, QSizePolicy,
 )
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QCursor
@@ -98,6 +98,8 @@ class CompletedPanel(QWidget):
         text = task.text if task.text else "(空任务)"
         lbl = QLabel(text)
         lbl.setObjectName("doneTextDone" if task.text else "doneText")
+        lbl.setWordWrap(True)            # 长文本触碰框边自动换行
+        lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         h.addWidget(lbl, 1)
         btn = QPushButton("↩")
         btn.setObjectName("restoreBtn")
