@@ -8,6 +8,8 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import Qt, QEvent, QPointF
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication
 
 from sticky_tasks.main_window import MainWindow
@@ -135,6 +137,36 @@ def test_lock_hides_controls_and_unlock_restores(app):
         assert w.header.add_btn.isVisible()
         assert w.header.lock_btn.isVisible()
         assert w.header.lock_btn.text() == "🔒"
+
+
+def test_edge_hover_sets_resize_cursor(app):
+    """鼠标悬停到窗口边缘/角落时,容器光标变为对应的缩放光标。"""
+    with tempfile.TemporaryDirectory() as d:
+        store = TaskStore(Path(d) / "tasks.json")
+        store.add("任务一")
+        w = MainWindow(store)
+        w.move(0, 0)
+        w.resize(300, 440)
+        w.show()
+        app.processEvents()
+
+        def hover(gx, gy):
+            ev = QMouseEvent(
+                QEvent.MouseMove, QPointF(1, 1), QPointF(gx, gy),
+                Qt.NoButton, Qt.NoButton, Qt.NoModifier,
+            )
+            w.eventFilter(w.container, ev)
+            oc = QApplication.overrideCursor()
+            return oc.shape() if oc is not None else Qt.ArrowCursor
+
+        wd, ht = w.width(), w.height()
+        assert hover(wd - 1, ht // 2) == Qt.SizeHorCursor      # 右边 → ↔
+        assert hover(wd // 2, ht - 1) == Qt.SizeVerCursor      # 下边 → ↕
+        assert hover(wd - 1, ht - 1) == Qt.SizeFDiagCursor     # 右下角 → ↖↘
+        assert hover(1, ht - 1) == Qt.SizeBDiagCursor          # 左下角 → ↗↙
+        assert hover(wd - 1, 1) == Qt.SizeBDiagCursor          # 右上角 → ↗↙
+        assert hover(wd // 2, ht // 2) == Qt.ArrowCursor       # 中间 → 箭头
+        w._apply_edge_cursor(None)  # 复位,避免污染后续测试
 
 
 def test_completed_right_click_delete(app):

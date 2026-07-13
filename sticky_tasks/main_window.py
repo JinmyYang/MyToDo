@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QScrollArea, QFrame,
     QApplication, QMenu,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QEvent
 from PySide6.QtGui import QCursor
 
 from .task_store import TaskStore
@@ -41,7 +41,8 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
 """
 
-EDGE = 8            # 边缘 resize 检测宽度
+EDGE = 16           # 边 resize 检测宽度(覆盖到可见深色块最外沿,加宽便于命中)
+CORNER = 26         # 角 resize 检测范围(比边更宽,抵消 8px 外边距 + 14px 圆角,便于命中对角缩放)
 MIN_W, MIN_H = 220, 200
 PANEL_H = 160       # 已完成面板展开时向下扩展的高度
 
@@ -93,6 +94,8 @@ class MainWindow(QWidget):
         self._resize_dir = None
         self._resize_start_geo = None
         self._resize_origin = None
+        self._edge_watch_ready = False
+        self._cursor_overriding = False  # 是否已压入应用级 resize 光标
 
         self.setWindowTitle("桌面便签")
         # 普通窗口层级(不再置顶),仅无边框
@@ -151,6 +154,48 @@ class MainWindow(QWidget):
 
         self.load_tasks()
 
+        # 让边缘缩放对"可见深色块边缘"生效:给容器及所有子控件开鼠标追踪 + 事件过滤
+        self._install_edge_watch(self.container)
+        self._edge_watch_ready = True
+
+    # ---- 边缘缩放:让 container 及子控件把鼠标事件转给窗口做边缘检测 ----
+    def _watch_widget(self, w):
+        w.setMouseTracking(True)
+        w.installEventFilter(self)
+        for c in w.findChildren(QWidget):
+            c.setMouseTracking(True)
+            c.installEventFilter(self)
+
+    def _install_edge_watch(self, root):
+        self._watch_widget(root)
+
+    def eventFilter(self, obj, event):
+        et = event.type()
+        if et == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+            pos = self.mapFromGlobal(event.globalPosition().toPoint())
+            direction = self._edge(pos)
+            if direction is not None:
+                self._resize_dir = direction
+                self._resize_start_geo = self.frameGeometry()
+                self._resize_origin = event.globalPosition().toPoint()
+                return True  # 消费,防止子控件把它当普通点击
+        elif et == QEvent.MouseMove:
+            if self._resize_dir is not None and (event.buttons() & Qt.LeftButton):
+                self._do_resize(event.globalPosition().toPoint())
+                return True
+            if not event.buttons():
+                pos = self.mapFromGlobal(event.globalPosition().toPoint())
+                direction = self._edge(pos)
+                self._apply_edge_cursor(direction)
+        elif et == QEvent.MouseButtonRelease:
+            if self._resize_dir is not None:
+                self._resize_dir = None
+                self._resize_start_geo = None
+                self._resize_origin = None
+                self._apply_edge_cursor(None)
+                return True
+        return super().eventFilter(obj, event)
+
     # ---- 加载 ----
     def load_tasks(self):
         for t in self.store.active_tasks():
@@ -166,6 +211,8 @@ class MainWindow(QWidget):
         # 插到末尾 stretch 之前
         self.list_layout.insertWidget(self.list_layout.count() - 1, item)
         self._active_items[task.id] = item
+        if self._edge_watch_ready:
+            self._watch_widget(item)  # 新任务行也纳入边缘检测
         if focus:
             item.start_edit()
         return item
@@ -270,27 +317,42 @@ class MainWindow(QWidget):
     def _edge(self, pos):
         x, y = pos.x(), pos.y()
         w, h = self.width(), self.height()
-        left = x < EDGE
-        right = x > w - EDGE
-        top = y < EDGE
-        bottom = y > h - EDGE
-        if top and left:
+        # 角:用更大的 CORNER 范围优先判定,便于命中对角缩放
+        left_c = x < CORNER
+        right_c = x > w - CORNER
+        top_c = y < CORNER
+        bottom_c = y > h - CORNER
+        if top_c and left_c:
             return "topleft"
-        if top and right:
+        if top_c and right_c:
             return "topright"
-        if bottom and left:
+        if bottom_c and left_c:
             return "bottomleft"
-        if bottom and right:
+        if bottom_c and right_c:
             return "bottomright"
-        if left:
+        # 边:用较窄的 EDGE 范围
+        if x < EDGE:
             return "left"
-        if right:
+        if x > w - EDGE:
             return "right"
-        if top:
+        if y < EDGE:
             return "top"
-        if bottom:
+        if y > h - EDGE:
             return "bottom"
         return None
+
+    def _apply_edge_cursor(self, direction):
+        """用应用级 override 光标,确保能盖过 footer 等子控件自带的光标。"""
+        if direction is not None:
+            cur = QCursor(self._cursor_for(direction))
+            if self._cursor_overriding:
+                QApplication.changeOverrideCursor(cur)
+            else:
+                QApplication.setOverrideCursor(cur)
+                self._cursor_overriding = True
+        elif self._cursor_overriding:
+            QApplication.restoreOverrideCursor()
+            self._cursor_overriding = False
 
     def _cursor_for(self, direction):
         if direction in ("left", "right"):
@@ -348,13 +410,14 @@ class MainWindow(QWidget):
         # 无按键:按是否在边缘更新光标
         if not event.buttons():
             direction = self._edge(event.position())
-            self.setCursor(QCursor(self._cursor_for(direction)))
+            self._apply_edge_cursor(direction)
 
     def mouseReleaseEvent(self, event):
         self._drag_pos = None
         self._resize_dir = None
         self._resize_start_geo = None
         self._resize_origin = None
+        self._apply_edge_cursor(None)
 
     # ---- 锁定态:鼠标移出窗口隐藏锁头,移入再显示 ----
     def enterEvent(self, event):
@@ -364,5 +427,8 @@ class MainWindow(QWidget):
 
     def leaveEvent(self, event):
         super().leaveEvent(event)
+        # 鼠标真正离开窗口且不在缩放中时,复位 resize 光标
+        if self._resize_dir is None:
+            self._apply_edge_cursor(None)
         if self._locked:
             self.header.lock_btn.setVisible(False)
