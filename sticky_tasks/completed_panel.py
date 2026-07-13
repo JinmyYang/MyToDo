@@ -1,7 +1,8 @@
-"""已完成任务面板:列出已完成任务,可一键恢复。"""
+"""已完成任务面板:列出已完成任务,可恢复或右键删除。"""
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame, QScrollArea,
+    QMenu,
 )
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QCursor
@@ -27,13 +28,31 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 """
 
 
+class _CompletedRow(QFrame):
+    """已完成任务行:右键弹出删除菜单。"""
+
+    delete_requested = Signal(str)
+
+    def __init__(self, task_id):
+        super().__init__()
+        self.setObjectName("completedItem")
+        self._task_id = task_id
+
+    def contextMenuEvent(self, event):
+        menu = QMenu(self)
+        act_del = menu.addAction("删除")
+        if menu.exec(event.globalPos()) is act_del:
+            self.delete_requested.emit(self._task_id)
+
+
 class CompletedPanel(QWidget):
     restored = Signal(str)  # task_id
+    deleted = Signal(str)   # task_id
 
     def __init__(self):
         super().__init__()
         self.setStyleSheet(PANEL_QSS)
-        self.setMaximumHeight(200)
+        self.setMaximumHeight(160)
         self._row_for = {}
 
         v = QVBoxLayout(self)
@@ -71,8 +90,7 @@ class CompletedPanel(QWidget):
         self.title.setText(f"已完成 ({count})" if count else "已完成")
 
     def _make_row(self, task):
-        row = QFrame()
-        row.setObjectName("completedItem")
+        row = _CompletedRow(task.id)
         h = QHBoxLayout(row)
         h.setContentsMargins(10, 4, 6, 4)
         h.setSpacing(6)
@@ -88,4 +106,5 @@ class CompletedPanel(QWidget):
         btn.setToolTip("恢复到任务列表")
         btn.clicked.connect(lambda checked=False, tid=task.id: self.restored.emit(tid))
         h.addWidget(btn)
+        row.delete_requested.connect(self.deleted)
         return row

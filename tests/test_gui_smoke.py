@@ -50,10 +50,11 @@ def test_core_flow(app):
         assert len(store.completed_tasks()) == 0
         assert w.footer_btn.text().startswith("已完成 (0)")
 
-        # 新建任务并填文本
+        # 新建任务并填文本(默认展示 label,需先进入编辑态)
         w.add_task()
         app.processEvents()
         new_item = list(w._active_items.values())[-1]
+        new_item.start_edit()
         new_item.edit.setText("新任务")
         new_item.edit.editingFinished.emit()
         app.processEvents()
@@ -65,6 +66,7 @@ def test_core_flow(app):
         w.add_task()
         app.processEvents()
         empty_item = list(w._active_items.values())[-1]
+        empty_item.start_edit()
         empty_item.edit.setText("")
         empty_item.edit.editingFinished.emit()
         app.processEvents()
@@ -106,3 +108,47 @@ def test_persistence_reload_restores_ui(app):
         app.processEvents()
         assert len(w._active_items) == 1
         assert w.footer_btn.text().startswith("已完成 (1)")
+
+
+def test_lock_hides_controls_and_unlock_restores(app):
+    """锁定后隐藏圆点/加号/锁头按钮,解锁恢复。"""
+    with tempfile.TemporaryDirectory() as d:
+        store = TaskStore(Path(d) / "tasks.json")
+        store.add("任务一")
+        w = MainWindow(store)
+        w.show()
+        app.processEvents()
+        item = list(w._active_items.values())[0]
+        assert item.dot.isVisible()
+
+        w.set_locked(True)
+        app.processEvents()
+        assert not item.dot.isVisible()
+        assert not w.add_row.isVisible()
+        assert not w.header.lock_btn.isVisible()
+        assert not w.footer_btn.isVisible()
+
+        w.unlock()
+        app.processEvents()
+        assert item.dot.isVisible()
+        assert w.add_row.isVisible()
+        assert w.header.lock_btn.isVisible()
+
+
+def test_completed_right_click_delete(app):
+    """已完成任务通过右键删除信号删除后,store 与面板同步。"""
+    with tempfile.TemporaryDirectory() as d:
+        store = TaskStore(Path(d) / "tasks.json")
+        t = store.add("做完的")
+        store.complete(t.id)
+        w = MainWindow(store)
+        w.show()
+        app.processEvents()
+        assert len(store.completed_tasks()) == 1
+
+        # 模拟已完成行右键 → 删除
+        w.completed_panel.deleted.emit(t.id)
+        app.processEvents()
+        assert len(store.completed_tasks()) == 0
+        assert store.get(t.id) is None
+        assert w.footer_btn.text().startswith("已完成 (0)")
