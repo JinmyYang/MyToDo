@@ -14,13 +14,11 @@ class TaskItem(QWidget):
     - 点圆点 → completed(task_id)
     - 右键 → 编辑/删除 菜单;编辑提交且变化 → text_changed(task_id, text)
     - 编辑后文本被清空 → delete_requested(task_id)
-    - 锁定后 hover 显示开锁按钮 → unlock_requested()
     """
 
     completed = Signal(str)
     text_changed = Signal(str, str)
     delete_requested = Signal(str)
-    unlock_requested = Signal()
 
     _LABEL_PAGE, _EDIT_PAGE = 0, 1
 
@@ -56,7 +54,10 @@ class TaskItem(QWidget):
 
         # 文字:展示用 QLabel + 编辑用 QLineEdit,同位置切换避免布局抖动
         self.stack = QStackedWidget()
+        self.stack.setObjectName("taskStack")
         self.stack.setFrameShape(QFrame.NoFrame)
+        # 透明背景,透出容器深色(避免 Windows 下 QStackedWidget 默认白底)
+        self.stack.setStyleSheet("QStackedWidget#taskStack { background: transparent; }")
 
         self.label = QLabel(task.text or "")
         self.label.setObjectName("taskText")
@@ -94,24 +95,6 @@ class TaskItem(QWidget):
         self.stack.addWidget(self.edit)
         self.stack.setCurrentIndex(self._LABEL_PAGE)
         lay.addWidget(self.stack, 1)
-
-        # 开锁按钮(锁定时 hover 显示)
-        self.unlock_btn = QPushButton("🔓")
-        self.unlock_btn.setObjectName("unlockBtn")
-        self.unlock_btn.setFixedSize(24, 24)
-        self.unlock_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        self.unlock_btn.setFocusPolicy(Qt.NoFocus)
-        self.unlock_btn.setToolTip("解锁")
-        self.unlock_btn.setStyleSheet("""
-            QPushButton#unlockBtn {
-                color: #9aa0a6; background: transparent; border: none;
-                font-size: 14px;
-            }
-            QPushButton#unlockBtn:hover { color: #ffffff; }
-        """)
-        self.unlock_btn.setVisible(False)
-        self.unlock_btn.clicked.connect(lambda checked=False: self.unlock_requested.emit())
-        lay.addWidget(self.unlock_btn)
 
     # ---- 编辑 ----
     def start_edit(self):
@@ -168,19 +151,5 @@ class TaskItem(QWidget):
     def set_locked(self, locked):
         self._locked = locked
         self.dot.setVisible(not locked)
-        self.unlock_btn.setVisible(False)
         if locked and self.stack.currentIndex() == self._EDIT_PAGE:
             self._exit_edit()
-        # 锁定瞬间鼠标可能正停在 item 上,enterEvent 不会重发,用 underMouse 兜底
-        if locked and self.underMouse():
-            self.unlock_btn.setVisible(True)
-
-    def enterEvent(self, event):
-        super().enterEvent(event)
-        if self._locked:
-            self.unlock_btn.setVisible(True)
-
-    def leaveEvent(self, event):
-        super().leaveEvent(event)
-        if self._locked:
-            self.unlock_btn.setVisible(False)

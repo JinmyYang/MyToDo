@@ -33,6 +33,8 @@ QPushButton#footerBtn:hover { color: #ffffff; }
 QPushButton#lockBtn { color: #9aa0a6; font-size: 15px; }
 QPushButton#lockBtn:hover { color: #ffffff; }
 QScrollArea#listScroll { border: none; background: transparent; }
+QScrollArea#listScroll viewport { background: transparent; }
+QWidget#listWidget { background: transparent; }
 QScrollBar:vertical { background: transparent; width: 6px; margin: 4px 0; }
 QScrollBar::handle:vertical { background: rgba(255,255,255,45); border-radius: 3px; min-height: 24px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
@@ -62,7 +64,7 @@ class HeaderBar(QFrame):
         self.lock_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self.lock_btn.setFocusPolicy(Qt.NoFocus)
         self.lock_btn.setToolTip("锁定")
-        self.lock_btn.clicked.connect(lambda checked=False: window.set_locked(True))
+        self.lock_btn.clicked.connect(lambda checked=False: window.toggle_locked())
         hl.addWidget(self.lock_btn)
 
     def contextMenuEvent(self, event):
@@ -130,6 +132,7 @@ class MainWindow(QWidget):
         self.scroll.setWidgetResizable(True)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.list_widget = QWidget()
+        self.list_widget.setObjectName("listWidget")
         self.list_layout = QVBoxLayout(self.list_widget)
         self.list_layout.setContentsMargins(0, 0, 0, 0)
         self.list_layout.setSpacing(0)
@@ -166,7 +169,6 @@ class MainWindow(QWidget):
         item.completed.connect(self.on_complete)
         item.text_changed.connect(self.on_text_changed)
         item.delete_requested.connect(self.on_delete)
-        item.unlock_requested.connect(self.unlock)
         # 插到末尾 stretch 之前
         self.list_layout.insertWidget(self.list_layout.count() - 1, item)
         self._active_items[task.id] = item
@@ -241,7 +243,14 @@ class MainWindow(QWidget):
     # ---- 锁定/解锁 ----
     def set_locked(self, locked):
         self._locked = locked
-        self.header.lock_btn.setVisible(not locked)
+        # 锁头按钮始终保留在右上角原处,仅切换图标与提示
+        if locked:
+            self.header.lock_btn.setText("🔓")
+            self.header.lock_btn.setToolTip("解锁")
+        else:
+            self.header.lock_btn.setText("🔒")
+            self.header.lock_btn.setToolTip("锁定")
+        self.header.lock_btn.setVisible(True)
         self.add_row.setVisible(not locked)
         self.footer_btn.setVisible(not locked)
         if locked and self._completed_expanded:
@@ -251,6 +260,9 @@ class MainWindow(QWidget):
 
     def unlock(self):
         self.set_locked(False)
+
+    def toggle_locked(self):
+        self.set_locked(not self._locked)
 
     def show_header_menu(self, global_pos):
         """上方栏右键菜单:锁定时可解锁,始终可退出。"""

@@ -8,10 +8,14 @@ from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QCursor
 
 PANEL_QSS = """
+CompletedPanel { background: transparent; }
 QFrame#completedItem {
-    background: rgba(255,255,255,18);
+    background: transparent;
     border-radius: 6px;
     margin: 2px 10px;
+}
+QFrame#completedItem:hover {
+    background: rgba(255,255,255,12);
 }
 QLabel#doneText { color: #9aa0a6; font-size: 12px; }
 QLabel#doneTextDone { color: #9aa0a6; font-size: 12px; text-decoration: line-through; }
@@ -20,8 +24,9 @@ QPushButton#restoreBtn {
     padding: 2px 6px; font-size: 14px;
 }
 QPushButton#restoreBtn:hover { color: #1a73e8; }
-QLabel#panelTitle { color: #80868b; font-size: 11px; padding: 6px 14px 2px; }
 QScrollArea { border: none; background: transparent; }
+QScrollArea viewport { background: transparent; }
+QWidget#bodyContainer { background: transparent; }
 QScrollBar:vertical { background: transparent; width: 6px; margin: 2px; }
 QScrollBar::handle:vertical { background: rgba(255,255,255,50); border-radius: 3px; min-height: 20px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
@@ -56,17 +61,14 @@ class CompletedPanel(QWidget):
         self._row_for = {}
 
         v = QVBoxLayout(self)
-        v.setContentsMargins(0, 4, 0, 4)
+        v.setContentsMargins(0, 8, 0, 4)
         v.setSpacing(0)
-
-        self.title = QLabel("已完成")
-        self.title.setObjectName("panelTitle")
-        v.addWidget(self.title)
 
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.body_container = QWidget()
+        self.body_container.setObjectName("bodyContainer")
         self.body = QVBoxLayout(self.body_container)
         self.body.setContentsMargins(0, 0, 0, 0)
         self.body.setSpacing(0)
@@ -86,8 +88,7 @@ class CompletedPanel(QWidget):
             row = self._make_row(t)
             self.body.insertWidget(self.body.count() - 1, row)
             self._row_for[t.id] = row
-        count = len(tasks)
-        self.title.setText(f"已完成 ({count})" if count else "已完成")
+
 
     def _make_row(self, task):
         row = _CompletedRow(task.id)
