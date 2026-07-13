@@ -124,7 +124,7 @@ def test_lock_hides_controls_and_unlock_restores(app):
         w.set_locked(True)
         app.processEvents()
         assert not item.dot.isVisible()
-        assert not w.add_row.isVisible()
+        assert not w.header.add_btn.isVisible()
         assert w.header.lock_btn.isVisible()
         assert w.header.lock_btn.text() == "🔓"
         assert not w.footer_btn.isVisible()
@@ -132,7 +132,7 @@ def test_lock_hides_controls_and_unlock_restores(app):
         w.unlock()
         app.processEvents()
         assert item.dot.isVisible()
-        assert w.add_row.isVisible()
+        assert w.header.add_btn.isVisible()
         assert w.header.lock_btn.isVisible()
         assert w.header.lock_btn.text() == "🔒"
 

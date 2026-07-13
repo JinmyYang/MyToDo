@@ -47,7 +47,7 @@ PANEL_H = 160       # 已完成面板展开时向下扩展的高度
 
 
 class HeaderBar(QFrame):
-    """上方栏:锁头按钮、空白可拖动、右键退出/解锁。"""
+    """上方栏:加号与锁头横向排列、空白可拖动、右键退出/解锁。"""
 
     def __init__(self, window):
         super().__init__()
@@ -57,6 +57,16 @@ class HeaderBar(QFrame):
         hl.setContentsMargins(14, 12, 8, 8)
         hl.setSpacing(8)
         hl.addStretch()
+
+        # 加号:新建任务(与锁头同一行)
+        self.add_btn = QPushButton("+")
+        self.add_btn.setObjectName("addBtn")
+        self.add_btn.setFixedSize(24, 24)
+        self.add_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self.add_btn.setFocusPolicy(Qt.NoFocus)
+        self.add_btn.setToolTip("新建任务")
+        self.add_btn.clicked.connect(window.add_task)
+        hl.addWidget(self.add_btn)
 
         self.lock_btn = QPushButton("🔒")
         self.lock_btn.setObjectName("lockBtn")
@@ -85,9 +95,8 @@ class MainWindow(QWidget):
         self._resize_origin = None
 
         self.setWindowTitle("桌面便签")
-        self.setWindowFlags(
-            Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
-        )
+        # 普通窗口层级(不再置顶),仅无边框
+        self.setWindowFlags(Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setMinimumSize(MIN_W, MIN_H)
         self.setMouseTracking(True)
@@ -107,24 +116,9 @@ class MainWindow(QWidget):
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(0)
 
-        # ---- 标题栏(空白处可拖动窗口,右键退出/解锁)----
+        # ---- 标题栏(加号 + 锁头横向排列;空白处可拖动窗口,右键退出/解锁)----
         self.header = HeaderBar(self)
         v.addWidget(self.header)
-
-        # ---- 加号行 ----
-        self.add_row = QFrame()
-        al = QHBoxLayout(self.add_row)
-        al.setContentsMargins(10, 0, 10, 6)
-        al.addStretch()
-        add_btn = QPushButton("+")
-        add_btn.setObjectName("addBtn")
-        add_btn.setFixedSize(24, 24)
-        add_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        add_btn.setFocusPolicy(Qt.NoFocus)
-        add_btn.setToolTip("新建任务")
-        add_btn.clicked.connect(self.add_task)
-        al.addWidget(add_btn)
-        v.addWidget(self.add_row)
 
         # ---- 任务列表(可滚动)----
         self.scroll = QScrollArea()
@@ -251,7 +245,7 @@ class MainWindow(QWidget):
             self.header.lock_btn.setText("🔒")
             self.header.lock_btn.setToolTip("锁定")
         self.header.lock_btn.setVisible(True)
-        self.add_row.setVisible(not locked)
+        self.header.add_btn.setVisible(not locked)
         self.footer_btn.setVisible(not locked)
         if locked and self._completed_expanded:
             self.toggle_completed()  # 锁定时收起已完成面板
@@ -361,3 +355,14 @@ class MainWindow(QWidget):
         self._resize_dir = None
         self._resize_start_geo = None
         self._resize_origin = None
+
+    # ---- 锁定态:鼠标移出窗口隐藏锁头,移入再显示 ----
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        if self._locked:
+            self.header.lock_btn.setVisible(True)
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        if self._locked:
+            self.header.lock_btn.setVisible(False)
