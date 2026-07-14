@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QScrollArea, QFrame,
     QApplication, QMenu,
 )
-from PySide6.QtCore import Qt, QEvent, QSize
+from PySide6.QtCore import Qt, QEvent, QSize, QPointF
 from PySide6.QtGui import QCursor, QPixmap, QPainter, QColor, QIcon
 
 from .task_store import TaskStore
@@ -173,6 +173,15 @@ class MainWindow(QWidget):
 
     def eventFilter(self, obj, event):
         et = event.type()
+        # footer 图标颜色随字体:通常灰(#9aa0a6),hover 变白(#ffffff)
+        if obj is self.footer_btn and not self._locked:
+            if et == QEvent.Enter:
+                self.footer_btn.setIcon(
+                    QIcon(self._chevron_pixmap(self._chevron_dir(), color=QColor("#ffffff"))))
+            elif et == QEvent.Leave:
+                self.footer_btn.setIcon(
+                    QIcon(self._chevron_pixmap(self._chevron_dir(), color=QColor("#9aa0a6"))))
+            return False  # 不拦截,让默认 hover 样式继续生效
         if et == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
             pos = self.mapFromGlobal(event.globalPosition().toPoint())
             direction = self._edge(pos)
@@ -281,34 +290,39 @@ class MainWindow(QWidget):
 
     def _update_footer(self):
         self.footer_btn.setText(self._footer_text())
-        # chevron 图标:折叠朝右 >,展开朝下 v
-        self.footer_btn.setIcon(
-            QIcon(self._chevron_pixmap("down" if self._completed_expanded else "right"))
-        )
+        # chevron 图标:折叠朝右 >,展开朝下 v;颜色与 footer 字体一致
+        self.footer_btn.setIcon(QIcon(self._chevron_pixmap(self._chevron_dir())))
+
+    def _chevron_dir(self):
+        return "down" if self._completed_expanded else "right"
 
     def _chevron_pixmap(self, direction, size=14, color=QColor("#9aa0a6")):
-        """用 QPainter 画矢量 chevron(不依赖 SVG 插件,跨系统不糊)。"""
-        pm = QPixmap(size, size)
+        """用 QPainter 画矢量 chevron:浮点坐标严格对称 + 按设备像素比(DPR)高清渲染,不糊。"""
+        try:
+            dpr = QApplication.primaryScreen().devicePixelRatio() or 1.0
+        except Exception:
+            dpr = 1.0
+        pm = QPixmap(int(size * dpr), int(size * dpr))
+        pm.setDevicePixelRatio(dpr)
         pm.fill(Qt.transparent)
         p = QPainter(pm)
         p.setRenderHint(QPainter.Antialiasing)
         pen = p.pen()
         pen.setColor(color)
-        pen.setWidthF(max(2.0, size / 7.0))
+        pen.setWidthF(max(1.5, size * 0.16))
         pen.setCapStyle(Qt.RoundCap)
         pen.setJoinStyle(Qt.RoundJoin)
         p.setPen(pen)
-        s = float(size)
+
+        cx = cy = size / 2.0
+        off = size * 0.20    # 顶点相对中心的横向偏移
+        off2 = size * 0.32   # 两臂展开的纵向偏移
         if direction == "down":
-            p.drawLine(int(s * 0.22), int(s * 0.38),
-                       int(s * 0.50), int(s * 0.64))
-            p.drawLine(int(s * 0.50), int(s * 0.64),
-                       int(s * 0.78), int(s * 0.38))
+            p.drawLine(QPointF(cx - off2, cy - off), QPointF(cx, cy + off))
+            p.drawLine(QPointF(cx, cy + off), QPointF(cx + off2, cy - off))
         else:  # right
-            p.drawLine(int(s * 0.38), int(s * 0.22),
-                       int(s * 0.64), int(s * 0.50))
-            p.drawLine(int(s * 0.64), int(s * 0.50),
-                       int(s * 0.38), int(s * 0.78))
+            p.drawLine(QPointF(cx - off, cy - off2), QPointF(cx + off, cy))
+            p.drawLine(QPointF(cx + off, cy), QPointF(cx - off, cy + off2))
         p.end()
         return pm
 
