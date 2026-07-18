@@ -169,6 +169,41 @@ def test_edge_hover_sets_resize_cursor(app):
         w._apply_edge_cursor(None)  # 复位,避免污染后续测试
 
 
+def test_collapsed_footer_bottom_edge_can_resize(app):
+    """已完成栏折叠时,footer 底边仍能拖拽缩放窗口。"""
+    with tempfile.TemporaryDirectory() as d:
+        store = TaskStore(Path(d) / "tasks.json")
+        store.add("任务一")
+        w = MainWindow(store)
+        w.move(0, 0)
+        w.resize(300, 440)
+        w.show()
+        app.processEvents()
+
+        old_h = w.height()
+        x = w.width() // 2
+        y = old_h - 1
+        press = QMouseEvent(
+            QEvent.MouseButtonPress, QPointF(x, y), QPointF(x, y),
+            Qt.LeftButton, Qt.LeftButton, Qt.NoModifier,
+        )
+        assert w.eventFilter(w.footer_btn, press) is True
+
+        move = QMouseEvent(
+            QEvent.MouseMove, QPointF(x, y + 30), QPointF(x, y + 30),
+            Qt.NoButton, Qt.LeftButton, Qt.NoModifier,
+        )
+        assert w.eventFilter(w.footer_btn, move) is True
+
+        release = QMouseEvent(
+            QEvent.MouseButtonRelease, QPointF(x, y + 30), QPointF(x, y + 30),
+            Qt.LeftButton, Qt.NoButton, Qt.NoModifier,
+        )
+        assert w.eventFilter(w.footer_btn, release) is True
+        assert w.height() > old_h
+        w._apply_edge_cursor(None)
+
+
 def test_completed_right_click_delete(app):
     """已完成任务通过右键删除信号删除后,store 与面板同步。"""
     with tempfile.TemporaryDirectory() as d:

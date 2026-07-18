@@ -178,10 +178,11 @@ class MainWindow(QWidget):
             if et == QEvent.Enter:
                 self.footer_btn.setIcon(
                     QIcon(self._chevron_pixmap(self._chevron_dir(), color=QColor("#ffffff"))))
+                return False  # 不拦截,让默认 hover 样式继续生效
             elif et == QEvent.Leave:
                 self.footer_btn.setIcon(
                     QIcon(self._chevron_pixmap(self._chevron_dir(), color=QColor("#9aa0a6"))))
-            return False  # 不拦截,让默认 hover 样式继续生效
+                return False  # 不拦截,让默认 hover 样式继续生效
         if et == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
             pos = self.mapFromGlobal(event.globalPosition().toPoint())
             direction = self._edge(pos)
