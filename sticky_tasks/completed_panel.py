@@ -10,20 +10,24 @@ from PySide6.QtGui import QCursor
 PANEL_QSS = """
 CompletedPanel { background: transparent; }
 QFrame#completedItem {
-    background: transparent;
-    border-radius: 6px;
-    margin: 2px 10px;
+    background: rgba(255, 255, 255, 5);
+    border-radius: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 8);
+    margin: 0px 10px 0px;
+    padding: 3px 0;
 }
 QFrame#completedItem:hover {
-    background: rgba(255,255,255,12);
+    background: rgba(255,255,255,14);
 }
-QLabel#doneText { color: #9aa0a6; font-size: 12px; }
-QLabel#doneTextDone { color: #9aa0a6; font-size: 12px; text-decoration: line-through; }
+QLabel#doneText { color: #98989f; font-size: 12px; }
+QLabel#doneTextDone { color: #98989f; font-size: 12px; text-decoration: line-through; }
 QPushButton#restoreBtn {
-    color: #9aa0a6; background: transparent; border: none;
-    padding: 2px 6px; font-size: 14px;
+    color: #a1a1aa; background: rgba(255, 255, 255, 8);
+    border: 1px solid rgba(255, 255, 255, 14);
+    border-radius: 10px;
+    padding: 1px 5px; font-size: 13px;
 }
-QPushButton#restoreBtn:hover { color: #1a73e8; }
+QPushButton#restoreBtn:hover { color: #ffffff; background: #0a84ff; border-color: #409cff; }
 QScrollArea { border: none; background: transparent; }
 QScrollArea viewport { background: transparent; }
 QWidget#bodyContainer { background: transparent; }
@@ -41,11 +45,29 @@ class _CompletedRow(QFrame):
     def __init__(self, task_id):
         super().__init__()
         self.setObjectName("completedItem")
+        self.setAttribute(Qt.WA_StyledBackground)
         self._task_id = task_id
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
-        act_del = menu.addAction("删除")
+        menu.setStyleSheet("""
+            QMenu {
+                background: rgba(45, 46, 50, 240);
+                border: 1px solid rgba(255,255,255,18);
+                border-radius: 8px;
+                padding: 4px 0;
+            }
+            QMenu::item {
+                padding: 6px 24px;
+                color: #f1f3f4;
+                font-size: 13px;
+            }
+            QMenu::item:selected {
+                background: #0a84ff;
+                color: #ffffff;
+            }
+        """)
+        act_del = menu.addAction("\u5220\u9664")
         if menu.exec(event.globalPos()) is act_del:
             self.delete_requested.emit(self._task_id)
 
@@ -61,7 +83,7 @@ class CompletedPanel(QWidget):
         self._row_for = {}
 
         v = QVBoxLayout(self)
-        v.setContentsMargins(0, 8, 0, 4)
+        v.setContentsMargins(0, 7, 0, 6)
         v.setSpacing(0)
 
         self.scroll = QScrollArea()
@@ -93,8 +115,8 @@ class CompletedPanel(QWidget):
     def _make_row(self, task):
         row = _CompletedRow(task.id)
         h = QHBoxLayout(row)
-        h.setContentsMargins(10, 4, 6, 4)
-        h.setSpacing(6)
+        h.setContentsMargins(10, 5, 6, 5)
+        h.setSpacing(8)
         text = task.text if task.text else "(空任务)"
         lbl = QLabel(text)
         lbl.setObjectName("doneTextDone" if task.text else "doneText")

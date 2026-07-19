@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QApplication, QMenu,
 )
 from PySide6.QtCore import Qt, QEvent, QSize, QPointF
-from PySide6.QtGui import QCursor, QPixmap, QPainter, QColor, QIcon
+from PySide6.QtGui import QCursor, QPixmap, QPainter, QColor, QIcon, QFont
 
 from .task_store import TaskStore
 from .task_item import TaskItem
@@ -13,30 +13,57 @@ from .completed_panel import CompletedPanel
 
 QSS = """
 QFrame#container {
-    background: rgba(38, 40, 46, 215);
-    border-radius: 14px;
+    background: rgba(30, 31, 35, 238);
+    border: 1px solid rgba(255, 255, 255, 28);
+    border-radius: 18px;
 }
-QLabel { color: #f1f3f4; font-size: 13px; }
-QPushButton { color: #e8eaed; background: transparent; border: none; }
+QFrame#sectionSep {
+    background: rgba(255, 255, 255, 14);
+    border: none;
+    max-height: 1px;
+}
+QLabel { color: #f5f5f7; font-size: 13px; }
+QLabel#titleLabel {
+    color: #f5f5f7;
+    font-size: 15px;
+    font-weight: 600;
+    font-style: italic;
+    letter-spacing: 0.5px;
+}
+QPushButton { color: #f5f5f7; background: transparent; border: none; }
 QPushButton#addBtn {
-    background: rgba(26,115,232,210);
-    border-radius: 11px;
-    font-size: 18px; font-weight: bold;
-    min-width: 22px; min-height: 22px;
+    background: #0a84ff;
+    border: 1px solid rgba(255, 255, 255, 42);
+    border-radius: 12px;
+    font-size: 19px; font-weight: 500;
+    min-width: 24px; min-height: 24px;
 }
-QPushButton#addBtn:hover { background: rgba(58,132,255,255); }
+QPushButton#addBtn:hover { background: #409cff; }
+QPushButton#addBtn:pressed { background: #006edb; }
 QPushButton#footerBtn {
-    color: #9aa0a6; text-align: left;
-    padding: 8px 14px; font-size: 12px;
+    color: #a1a1aa;
+    text-align: left;
+    border-top: 1px solid rgba(255, 255, 255, 14);
+    padding: 10px 14px 11px;
+    font-size: 12px;
+    font-weight: 500;
 }
-QPushButton#footerBtn:hover { color: #ffffff; }
-QPushButton#lockBtn { color: #9aa0a6; font-size: 15px; }
-QPushButton#lockBtn:hover { color: #ffffff; }
+QPushButton#footerBtn:hover { color: #f5f5f7; background: rgba(255, 255, 255, 8); }
+QPushButton#lockBtn {
+    color: #b5b5bd;
+    background: rgba(255, 255, 255, 10);
+    border: 1px solid rgba(255, 255, 255, 14);
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+QPushButton#lockBtn:hover { color: #ffffff; background: rgba(255, 255, 255, 18); }
+QPushButton#lockBtn:pressed { background: rgba(255, 255, 255, 28); }
 QScrollArea#listScroll { border: none; background: transparent; }
 QScrollArea#listScroll viewport { background: transparent; }
 QWidget#listWidget { background: transparent; }
-QScrollBar:vertical { background: transparent; width: 6px; margin: 4px 0; }
-QScrollBar::handle:vertical { background: rgba(255,255,255,45); border-radius: 3px; min-height: 24px; }
+QScrollBar:vertical { background: transparent; width: 7px; margin: 6px 2px; }
+QScrollBar::handle:vertical { background: rgba(255,255,255,55); border-radius: 3px; min-height: 24px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
 """
@@ -55,23 +82,27 @@ class HeaderBar(QFrame):
         self._window = window
 
         hl = QHBoxLayout(self)
-        hl.setContentsMargins(14, 12, 8, 8)
-        hl.setSpacing(8)
+        hl.setContentsMargins(16, 12, 12, 8)
+        hl.setSpacing(7)
+
+        self.title_label = QLabel("just do it")
+        self.title_label.setObjectName("titleLabel")
+        hl.addWidget(self.title_label)
         hl.addStretch()
 
         # 加号:新建任务(与锁头同一行)
         self.add_btn = QPushButton("+")
         self.add_btn.setObjectName("addBtn")
-        self.add_btn.setFixedSize(24, 24)
+        self.add_btn.setFixedSize(28, 28)
         self.add_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self.add_btn.setFocusPolicy(Qt.NoFocus)
         self.add_btn.setToolTip("新建任务")
         self.add_btn.clicked.connect(window.add_task)
         hl.addWidget(self.add_btn)
 
-        self.lock_btn = QPushButton("🔒")
+        self.lock_btn = QPushButton("锁")
         self.lock_btn.setObjectName("lockBtn")
-        self.lock_btn.setFixedSize(26, 26)
+        self.lock_btn.setFixedSize(28, 28)
         self.lock_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self.lock_btn.setFocusPolicy(Qt.NoFocus)
         self.lock_btn.setToolTip("锁定")
@@ -98,12 +129,13 @@ class MainWindow(QWidget):
         self._cursor_overriding = False  # 是否已压入应用级 resize 光标
 
         self.setWindowTitle("桌面便签")
+        self.setFont(QFont("Segoe UI Variable", 10))
         # 普通窗口层级(不再置顶),仅无边框
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setMinimumSize(MIN_W, MIN_H)
         self.setMouseTracking(True)
-        self.resize(300, 440)
+        self.resize(320, 460)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(8, 8, 8, 8)
@@ -123,6 +155,13 @@ class MainWindow(QWidget):
         self.header = HeaderBar(self)
         v.addWidget(self.header)
 
+        # ---- 顶部分隔线 ----
+        self.top_sep = QFrame()
+        self.top_sep.setObjectName("sectionSep")
+        self.top_sep.setFrameShape(QFrame.NoFrame)
+        self.top_sep.setFixedHeight(1)
+        v.addWidget(self.top_sep)
+
         # ---- 任务列表(可滚动)----
         self.scroll = QScrollArea()
         self.scroll.setObjectName("listScroll")
@@ -132,7 +171,8 @@ class MainWindow(QWidget):
         self.list_widget.setObjectName("listWidget")
         self.list_layout = QVBoxLayout(self.list_widget)
         self.list_layout.setContentsMargins(0, 0, 0, 0)
-        self.list_layout.setSpacing(0)
+        self.list_layout.setSpacing(4)
+        self.list_layout.setAlignment(Qt.AlignTop)
         self.list_layout.addStretch()  # 末尾占位,任务顶对齐
         self.scroll.setWidget(self.list_widget)
         v.addWidget(self.scroll, 1)
@@ -332,10 +372,10 @@ class MainWindow(QWidget):
         self._locked = locked
         # 锁头按钮始终保留在右上角原处,仅切换图标与提示
         if locked:
-            self.header.lock_btn.setText("🔓")
+            self.header.lock_btn.setText("解")
             self.header.lock_btn.setToolTip("解锁")
         else:
-            self.header.lock_btn.setText("🔒")
+            self.header.lock_btn.setText("锁")
             self.header.lock_btn.setToolTip("锁定")
         self.header.lock_btn.setVisible(True)
         self.header.add_btn.setVisible(not locked)

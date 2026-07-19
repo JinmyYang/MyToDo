@@ -1,11 +1,11 @@
-"""单个任务项:圆点(点击完成)+ 文字(右键编辑/删除)+ 锁定开锁。"""
+﻿"""单个任务项:圆点(点击完成)+ 文字(右键编辑/删除)+ 锁定开锁。"""
 
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QPushButton, QLabel, QStackedWidget,
-    QMenu, QFrame, QPlainTextEdit, QSizePolicy,
+    QMenu, QFrame, QPlainTextEdit, QSizePolicy, QVBoxLayout,
 )
-from PySide6.QtCore import Signal, Qt, QEvent
-from PySide6.QtGui import QCursor
+from PySide6.QtCore import Signal, Qt, QEvent, QTimer, QRect
+from PySide6.QtGui import QCursor, QTextCursor, QPainter, QColor
 
 
 class TaskItem(QWidget):
@@ -26,29 +26,35 @@ class TaskItem(QWidget):
         super().__init__()
         self.task = task
         self._locked = False
+        self._hovered = False
+        self._fit_pending = False
+        self.setMouseTracking(True)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
 
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(12, 4, 12, 4)
-        lay.setSpacing(8)
+        self._layout = lay
+        lay.setContentsMargins(14, 6, 14, 6)
+        lay.setSpacing(10)
 
         # 圆点:点击完成(NoFocus,不抢文本框焦点,避免完成与保存逻辑冲突)
         self.dot = QPushButton()
         self.dot.setObjectName("taskDot")
-        self.dot.setFixedSize(18, 18)
+        self.dot.setFixedSize(19, 19)
         self.dot.setCursor(QCursor(Qt.PointingHandCursor))
         self.dot.setFocusPolicy(Qt.NoFocus)
         self.dot.setToolTip("标记为完成")
         self.dot.setStyleSheet("""
-            QPushButton#taskDot {
-                border: 2px solid #9aa0a6;
-                border-radius: 9px;
-                background: transparent;
-            }
-            QPushButton#taskDot:hover {
-                border-color: #1a73e8;
-                background: rgba(26,115,232,40);
-            }
-        """)
+    QPushButton#taskDot {
+        border: 1.5px solid #63636b;
+        border-radius: 9px;
+        background: transparent;
+    }
+    QPushButton#taskDot:hover {
+        border-color: #0a84ff;
+        background: rgba(10,132,255,60);
+    }
+    QPushButton#taskDot:pressed { background: #0a84ff; }
+""")
         self.dot.clicked.connect(lambda checked=False: self.completed.emit(self.task.id))
         lay.addWidget(self.dot)
 
@@ -56,44 +62,49 @@ class TaskItem(QWidget):
         self.stack = QStackedWidget()
         self.stack.setObjectName("taskStack")
         self.stack.setFrameShape(QFrame.NoFrame)
+        self.stack.setMinimumWidth(0)
+        self.stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         # 透明背景,透出容器深色(避免 Windows 下 QStackedWidget 默认白底)
         self.stack.setStyleSheet("QStackedWidget#taskStack { background: transparent; }")
 
         self.label = QLabel(task.text or "")
         self.label.setObjectName("taskText")
-        self.label.setWordWrap(True)            # 触碰框边自动换行,随框宽变化重新折行
+        self.label.setWordWrap(True)
         self.label.setTextFormat(Qt.PlainText)
         self.label.setTextInteractionFlags(Qt.NoTextInteraction)
+        self.label.setMinimumWidth(0)
         self.label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        # 透明背景,继承容器深色(解决纯白底问题)
         self.label.setStyleSheet("""
-            QLabel#taskText {
-                background: transparent;
-                border: none;
-                color: #f1f3f4;
-                font-size: 14px;
-                padding: 2px 0px;
-            }
-        """)
+    QLabel#taskText {
+        background: transparent;
+        border: none;
+        color: #f1f3f4;
+        font-size: 14px;
+        line-height: 1.4;
+        padding: 4px 1px;
+    }
+""")
 
         self.edit = QPlainTextEdit(task.text)
         self.edit.setObjectName("taskEdit")
         self.edit.setPlaceholderText("输入任务…")
-        self.edit.setLineWrapMode(QPlainTextEdit.WidgetWidth)   # 像 txt 一行写满自动换行
+        self.edit.setLineWrapMode(QPlainTextEdit.WidgetWidth)
         self.edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.edit.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        # 编辑态用深色叠加底,绕开 Windows 透明控件渲染白底的问题
+        self.edit.setMinimumWidth(0)
         self.edit.setStyleSheet("""
-            QPlainTextEdit#taskEdit {
-                background: rgba(255,255,255,20);
-                border: 1px solid #1a73e8;
-                border-radius: 4px;
-                color: #f1f3f4;
-                font-size: 14px;
-                padding: 2px 4px;
-            }
-        """)
+    QPlainTextEdit#taskEdit {
+        background: rgba(255,255,255,16);
+        border: 1px solid #0a84ff;
+        border-radius: 8px;
+        color: #f1f3f4;
+        font-size: 14px;
+        padding: 5px 7px;
+    }
+""")
+        initial_edit_h = self.edit.fontMetrics().lineSpacing() + 14
+        self.edit.setFixedHeight(initial_edit_h)
         self.edit.installEventFilter(self)
         self.edit.textChanged.connect(self._fit_edit_height)
 
@@ -101,6 +112,27 @@ class TaskItem(QWidget):
         self.stack.addWidget(self.edit)
         self.stack.setCurrentIndex(self._LABEL_PAGE)
         lay.addWidget(self.stack, 1)
+
+    # ---- 分隔线 + 悬停 ----
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        if self._hovered and self.stack.currentIndex() == self._LABEL_PAGE:
+            p.fillRect(self.rect(), QColor(255, 255, 255, 7))
+        p.setPen(QColor(255, 255, 255, 10))
+        p.drawLine(14, self.height() - 1, self.width() - 14, self.height() - 1)
+        p.end()
+
+    def enterEvent(self, event):
+        self._hovered = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hovered = False
+        self.update()
+        super().leaveEvent(event)
 
     # ---- 编辑 ----
     def start_edit(self):
@@ -110,15 +142,15 @@ class TaskItem(QWidget):
         self.stack.setCurrentIndex(self._EDIT_PAGE)
         self.edit.setPlainText(self.task.text)
         self.edit.setFocus()
-        self.edit.selectAll()
+        self.edit.moveCursor(QTextCursor.End)
         self._fit_edit_height()
+        self._schedule_fit_height()
 
     def focus_edit(self):
         """兼容旧调用。"""
         self.start_edit()
 
     def _on_editing_finished(self):
-        # 重入守卫:切回 label 会隐藏 edit 触发失焦,再次进入此槽
         if self.stack.currentIndex() != self._EDIT_PAGE:
             return
         text = self.edit.toPlainText().strip()
@@ -135,19 +167,65 @@ class TaskItem(QWidget):
 
     def _exit_edit(self):
         self.stack.setCurrentIndex(self._LABEL_PAGE)
+        self.stack.setMinimumHeight(0)
+        self.stack.setMaximumHeight(16777215)
+        self.setMinimumHeight(0)
+        self.setMaximumHeight(16777215)
+        self._fit_label_height()
+        self._schedule_fit_height()
+
+    def _fit_label_height(self):
+        """展示态按当前宽度换行，避免缩窄窗口时裁掉任务文本。"""
+        text_width = max(self.label.width(), self.stack.width(), 40)
+        label_h = max(
+            self.label.heightForWidth(text_width),
+            self.label.fontMetrics().lineSpacing() + 6,
+        )
+        row_h = max(label_h, self.dot.height()) + self._layout.contentsMargins().top() + self._layout.contentsMargins().bottom()
+        self.label.setFixedHeight(label_h)
+        self.stack.setFixedHeight(label_h)
+        self.setFixedHeight(row_h)
+        self.updateGeometry()
 
     def _fit_edit_height(self):
-        """编辑框随内容增长(像 txt);超过约 10 行再出现垂直滚动条。"""
-        doc_h = self.edit.document().size().height()
+        """编辑框按当前宽度自动换行，并完整容纳全部文本。"""
         line_h = self.edit.fontMetrics().lineSpacing()
-        new_h = int(doc_h) + 8
-        max_h = line_h * 10 + 8
-        if new_h >= max_h:
-            new_h = max_h
-            self.edit.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        else:
-            self.edit.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        text_width = max(self.edit.viewport().width() - 2, self.stack.width() - 14, 40)
+        flags = Qt.TextWordWrap | Qt.TextWrapAnywhere
+        text = self.edit.toPlainText() or " "
+        wrapped_h = self.edit.fontMetrics().boundingRect(
+            QRect(0, 0, text_width, 0), flags, text,
+        ).height()
+        doc_h = self.edit.document().size().height()
+        block_count = self.edit.document().blockCount()
+        text_h = max(wrapped_h, int(doc_h), block_count * line_h)
+        new_h = max(text_h + 14, line_h + 14)
+        row_h = max(new_h, self.dot.height()) + self._layout.contentsMargins().top() + self._layout.contentsMargins().bottom()
         self.edit.setMinimumHeight(new_h)
+        self.edit.setMaximumHeight(new_h)
+        self.stack.setMinimumHeight(new_h)
+        self.stack.setMaximumHeight(new_h)
+        self.setMinimumHeight(row_h)
+        self.setMaximumHeight(row_h)
+        self.updateGeometry()
+
+    def _schedule_fit_height(self):
+        if self._fit_pending:
+            return
+        self._fit_pending = True
+        QTimer.singleShot(0, self._run_scheduled_fit)
+
+    def _run_scheduled_fit(self):
+        self._fit_pending = False
+        if self.stack.currentIndex() == self._EDIT_PAGE:
+            self._fit_edit_height()
+        else:
+            self._fit_label_height()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if event.size().width() != event.oldSize().width():
+            self._schedule_fit_height()
 
     def eventFilter(self, obj, event):
         if obj is self.edit:
@@ -157,11 +235,11 @@ class TaskItem(QWidget):
             if event.type() == QEvent.KeyPress:
                 if event.key() in (Qt.Key_Enter, Qt.Key_Return):
                     if event.modifiers() & Qt.ShiftModifier:
-                        return False            # Shift+Enter 插入换行(默认行为)
-                    self._on_editing_finished()  # Enter 完成编辑
+                        return False
+                    self._on_editing_finished()
                     return True
                 if event.key() == Qt.Key_Escape:
-                    self._exit_edit()           # Esc 取消编辑
+                    self._exit_edit()
                     return True
         return super().eventFilter(obj, event)
 
@@ -174,6 +252,23 @@ class TaskItem(QWidget):
             event.ignore()
             return
         menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background: rgba(45, 46, 50, 240);
+                border: 1px solid rgba(255,255,255,18);
+                border-radius: 8px;
+                padding: 4px 0;
+            }
+            QMenu::item {
+                padding: 6px 24px;
+                color: #f1f3f4;
+                font-size: 13px;
+            }
+            QMenu::item:selected {
+                background: #0a84ff;
+                color: #ffffff;
+            }
+        """)
         act_edit = menu.addAction("编辑")
         act_del = menu.addAction("删除")
         chosen = menu.exec(event.globalPos())
@@ -189,3 +284,4 @@ class TaskItem(QWidget):
         self.dot.setVisible(not locked)
         if locked and self.stack.currentIndex() == self._EDIT_PAGE:
             self._exit_edit()
+        self.update()

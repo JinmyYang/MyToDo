@@ -57,8 +57,8 @@ def test_core_flow(app):
         app.processEvents()
         new_item = list(w._active_items.values())[-1]
         new_item.start_edit()
-        new_item.edit.setText("新任务")
-        new_item.edit.editingFinished.emit()
+        new_item.edit.setPlainText("新任务")
+        new_item._on_editing_finished()
         app.processEvents()
         assert len(w._active_items) == 4
         new_id = list(w._active_items.keys())[-1]
@@ -69,8 +69,8 @@ def test_core_flow(app):
         app.processEvents()
         empty_item = list(w._active_items.values())[-1]
         empty_item.start_edit()
-        empty_item.edit.setText("")
-        empty_item.edit.editingFinished.emit()
+        empty_item.edit.setPlainText("")
+        empty_item._on_editing_finished()
         app.processEvents()
         assert len(w._active_items) == 4  # 空的被删,回到 4
 
@@ -128,7 +128,7 @@ def test_lock_hides_controls_and_unlock_restores(app):
         assert not item.dot.isVisible()
         assert not w.header.add_btn.isVisible()
         assert w.header.lock_btn.isVisible()
-        assert w.header.lock_btn.text() == "🔓"
+        assert w.header.lock_btn.text() == "解"
         assert not w.footer_btn.isVisible()
 
         w.unlock()
@@ -136,7 +136,100 @@ def test_lock_hides_controls_and_unlock_restores(app):
         assert item.dot.isVisible()
         assert w.header.add_btn.isVisible()
         assert w.header.lock_btn.isVisible()
-        assert w.header.lock_btn.text() == "🔒"
+        assert w.header.lock_btn.text() == "锁"
+
+
+def test_macos_style_header_structure(app):
+    """主窗口保留简洁标语与圆形操作按钮的视觉结构。"""
+    with tempfile.TemporaryDirectory() as d:
+        store = TaskStore(Path(d) / "tasks.json")
+        w = MainWindow(store)
+
+        assert w.header.title_label.text() == "just do it"
+        assert w.header.add_btn.size() == w.header.lock_btn.size()
+        assert w.header.add_btn.width() == 28
+
+
+def test_task_rows_stay_compact_when_window_grows(app):
+    """窗口变高时，任务行保持紧凑，额外空间留在列表底部。"""
+    with tempfile.TemporaryDirectory() as d:
+        store = TaskStore(Path(d) / "tasks.json")
+        store.add("任务一")
+        store.add("任务二")
+        w = MainWindow(store)
+        w.show()
+        app.processEvents()
+
+        heights_before = [item.height() for item in w._active_items.values()]
+        assert max(heights_before) <= 48
+        w.resize(w.width(), w.height() + 240)
+        app.processEvents()
+        heights_after = [item.height() for item in w._active_items.values()]
+
+        assert heights_after == heights_before
+
+
+def test_edit_height_follows_task_text(app):
+    """编辑框只占文本所需高度，多行内容再相应增长。"""
+    with tempfile.TemporaryDirectory() as d:
+        store = TaskStore(Path(d) / "tasks.json")
+        task = store.add("短任务")
+        w = MainWindow(store)
+        w.show()
+        app.processEvents()
+
+        item = w._active_items[task.id]
+        item.start_edit()
+        app.processEvents()
+        single_line_height = item.edit.height()
+        assert not item.edit.textCursor().hasSelection()
+        assert item.edit.minimumHeight() == item.edit.maximumHeight()
+        assert single_line_height >= item.edit.fontMetrics().lineSpacing() + 14
+
+        item.edit.setPlainText("第一行\n第二行\n第三行")
+        app.processEvents()
+        assert item.edit.height() > single_line_height
+        assert item.edit.height() == item.stack.height()
+
+        item._on_editing_finished()
+        app.processEvents()
+        assert item.stack.height() == item.label.height()
+        assert item.height() >= item.dot.height() + 8
+
+        item.start_edit()
+        app.processEvents()
+        assert item.edit.toPlainText() == "第一行\n第二行\n第三行"
+        assert item.edit.height() > single_line_height
+        assert not item.edit.textCursor().hasSelection()
+
+
+def test_long_text_stays_visible_after_reopening_and_resizing(app):
+    """长文本重新编辑和缩窄窗口后，编辑框仍完整容纳文本。"""
+    with tempfile.TemporaryDirectory() as d:
+        store = TaskStore(Path(d) / "tasks.json")
+        text = "这是一段用于验证自动换行和重新编辑的较长任务文本。" * 4
+        task = store.add(text)
+        w = MainWindow(store)
+        w.show()
+        app.processEvents()
+
+        item = w._active_items[task.id]
+        item.start_edit()
+        app.processEvents()
+        first_height = item.edit.height()
+        assert item.edit.textCursor().position() == len(text)
+        assert not item.edit.textCursor().hasSelection()
+
+        item._on_editing_finished()
+        w.resize(220, w.height())
+        app.processEvents()
+        assert item.label.height() >= item.label.heightForWidth(item.label.width())
+
+        item.start_edit()
+        app.processEvents()
+        assert item.edit.toPlainText() == text
+        assert item.edit.textCursor().position() == len(text)
+        assert item.edit.height() >= first_height
 
 
 def test_edge_hover_sets_resize_cursor(app):
