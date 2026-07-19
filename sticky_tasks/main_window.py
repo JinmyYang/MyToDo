@@ -171,7 +171,7 @@ class MainWindow(QWidget):
         self.list_widget.setObjectName("listWidget")
         self.list_layout = QVBoxLayout(self.list_widget)
         self.list_layout.setContentsMargins(0, 0, 0, 0)
-        self.list_layout.setSpacing(4)
+        self.list_layout.setSpacing(0)
         self.list_layout.setAlignment(Qt.AlignTop)
         self.list_layout.addStretch()  # 末尾占位,任务顶对齐
         self.scroll.setWidget(self.list_widget)
