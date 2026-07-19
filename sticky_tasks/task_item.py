@@ -81,7 +81,7 @@ class TaskItem(QWidget):
         color: #f1f3f4;
         font-size: 14px;
         line-height: 1.4;
-        padding: 4px 1px;
+        padding: 0px;
     }
 """)
 
@@ -179,7 +179,7 @@ class TaskItem(QWidget):
         text_width = max(self.label.width(), self.stack.width(), 40)
         label_h = max(
             self.label.heightForWidth(text_width),
-            self.label.fontMetrics().lineSpacing() + 6,
+            self.label.fontMetrics().lineSpacing() + 4,
         )
         row_h = max(label_h, self.dot.height()) + self._layout.contentsMargins().top() + self._layout.contentsMargins().bottom()
         self.label.setFixedHeight(label_h)
