@@ -5,8 +5,48 @@ from PySide6.QtWidgets import (
     QMenu, QFrame, QPlainTextEdit, QSizePolicy,
 )
 from PySide6.QtCore import Signal, Qt, QEvent, QTimer, QRect
-from PySide6.QtGui import QCursor, QTextCursor, QPainter, QColor
+from PySide6.QtGui import QCursor, QTextCursor, QPainter, QColor, QPen
 
+
+
+
+class DotButton(QWidget):
+    """Custom round dot button: QPainter-drawn circle, no native button artifacts."""
+    clicked = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(20, 20)
+        self.setCursor(QCursor(Qt.PointingHandCursor))
+        self.setFocusPolicy(Qt.NoFocus)
+        self.setToolTip("标记为完成")
+        self._hovered = False
+        self.setMouseTracking(True)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        r = self.rect().adjusted(2, 2, -2, -2)
+        if self._hovered:
+            p.setPen(QPen(QColor("#0a84ff"), 2))
+            p.setBrush(QColor(10, 132, 255, 50))
+        else:
+            p.setPen(QPen(QColor("#63636b"), 2))
+            p.setBrush(Qt.NoBrush)
+        p.drawEllipse(r)
+        p.end()
+
+    def enterEvent(self, event):
+        self._hovered = True
+        self.update()
+
+    def leaveEvent(self, event):
+        self._hovered = False
+        self.update()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
 
 class TaskItem(QWidget):
     """一行任务。
@@ -36,26 +76,9 @@ class TaskItem(QWidget):
         lay.setContentsMargins(14, 6, 14, 6)
         lay.setSpacing(10)
 
-        # 圆点:点击完成(NoFocus,不抢文本框焦点,避免完成与保存逻辑冲突)
-        self.dot = QPushButton()
-        self.dot.setObjectName("taskDot")
-        self.dot.setFixedSize(19, 19)
-        self.dot.setCursor(QCursor(Qt.PointingHandCursor))
-        self.dot.setFocusPolicy(Qt.NoFocus)
-        self.dot.setToolTip("标记为完成")
-        self.dot.setStyleSheet("""
-    QPushButton#taskDot {
-        border: 1.5px solid #63636b;
-        border-radius: 9px;
-        background: transparent;
-    }
-    QPushButton#taskDot:hover {
-        border-color: #0a84ff;
-        background: rgba(10,132,255,60);
-    }
-    QPushButton#taskDot:pressed { background: #0a84ff; }
-""")
-        self.dot.clicked.connect(lambda checked=False: self.completed.emit(self.task.id))
+        # 圆点:QPainter 手绘正圆
+        self.dot = DotButton()
+        self.dot.clicked.connect(lambda: self.completed.emit(self.task.id))
         lay.addWidget(self.dot)
 
         # 文字:展示用 QLabel + 编辑用 QPlainTextEdit,同位置切换避免布局抖动
