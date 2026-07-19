@@ -178,6 +178,9 @@ class TaskItem(QWidget):
         m = self._layout.contentsMargins()
         w = self.width() - m.left() - m.right() - self._layout.spacing() - self.dot.width()
         text_width = max(w, 40)
+        # 重置高度约束(setFixedHeight 会污染 heightForWidth 的返回值!)
+        self.label.setMinimumHeight(0)
+        self.label.setMaximumHeight(16777215)
         label_h = max(
             self.label.heightForWidth(text_width),
             self.label.fontMetrics().lineSpacing() + 4,
@@ -194,6 +197,8 @@ class TaskItem(QWidget):
         m = self._layout.contentsMargins()
         w = self.width() - m.left() - m.right() - self._layout.spacing() - self.dot.width()
         text_width = max(self.edit.viewport().width() - 2, self.stack.width() - 14, w - 14, 40)
+        self.edit.setMinimumHeight(0)
+        self.edit.setMaximumHeight(16777215)
         flags = Qt.TextWordWrap | Qt.TextWrapAnywhere
         text = self.edit.toPlainText() or " "
         wrapped_h = self.edit.fontMetrics().boundingRect(
