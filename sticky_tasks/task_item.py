@@ -2,7 +2,7 @@
 
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QPushButton, QLabel, QStackedWidget,
-    QMenu, QFrame, QPlainTextEdit, QSizePolicy, QVBoxLayout,
+    QMenu, QFrame, QPlainTextEdit, QSizePolicy,
 )
 from PySide6.QtCore import Signal, Qt, QEvent, QTimer, QRect
 from PySide6.QtGui import QCursor, QTextCursor, QPainter, QColor
@@ -80,7 +80,6 @@ class TaskItem(QWidget):
         border: none;
         color: #f1f3f4;
         font-size: 14px;
-        line-height: 1.4;
         padding: 0px;
     }
 """)
@@ -176,12 +175,14 @@ class TaskItem(QWidget):
 
     def _fit_label_height(self):
         """展示态按当前宽度换行，避免缩窄窗口时裁掉任务文本。"""
-        text_width = max(self.label.width(), self.stack.width(), 40)
+        m = self._layout.contentsMargins()
+        w = self.width() - m.left() - m.right() - self._layout.spacing() - self.dot.width()
+        text_width = max(w, 40)
         label_h = max(
             self.label.heightForWidth(text_width),
             self.label.fontMetrics().lineSpacing() + 4,
         )
-        row_h = max(label_h, self.dot.height()) + self._layout.contentsMargins().top() + self._layout.contentsMargins().bottom()
+        row_h = max(label_h, self.dot.height()) + m.top() + m.bottom()
         self.label.setFixedHeight(label_h)
         self.stack.setFixedHeight(label_h)
         self.setFixedHeight(row_h)
@@ -190,7 +191,9 @@ class TaskItem(QWidget):
     def _fit_edit_height(self):
         """编辑框按当前宽度自动换行，并完整容纳全部文本。"""
         line_h = self.edit.fontMetrics().lineSpacing()
-        text_width = max(self.edit.viewport().width() - 2, self.stack.width() - 14, 40)
+        m = self._layout.contentsMargins()
+        w = self.width() - m.left() - m.right() - self._layout.spacing() - self.dot.width()
+        text_width = max(self.edit.viewport().width() - 2, self.stack.width() - 14, w - 14, 40)
         flags = Qt.TextWordWrap | Qt.TextWrapAnywhere
         text = self.edit.toPlainText() or " "
         wrapped_h = self.edit.fontMetrics().boundingRect(
@@ -200,7 +203,7 @@ class TaskItem(QWidget):
         block_count = self.edit.document().blockCount()
         text_h = max(wrapped_h, int(doc_h), block_count * line_h)
         new_h = max(text_h + 14, line_h + 14)
-        row_h = max(new_h, self.dot.height()) + self._layout.contentsMargins().top() + self._layout.contentsMargins().bottom()
+        row_h = max(new_h, self.dot.height()) + m.top() + m.bottom()
         self.edit.setMinimumHeight(new_h)
         self.edit.setMaximumHeight(new_h)
         self.stack.setMinimumHeight(new_h)
