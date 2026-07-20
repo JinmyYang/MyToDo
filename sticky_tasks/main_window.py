@@ -84,19 +84,29 @@ class LockButton(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        c = QColor("#f5f5f7") if self._locked else QColor("#8e8e93")
+        locked = self._locked
+        c = QColor("#f5f5f7") if locked else QColor("#8e8e93")
         pen = QPen(c, 1.5); pen.setCapStyle(Qt.RoundCap); pen.setJoinStyle(Qt.RoundJoin)
         p.setPen(pen); p.setBrush(Qt.NoBrush)
         w, h = self.width(), self.height()
+        # body
+        body_y = h * 0.35 if locked else h * 0.28
         bw, bh = w * 0.55, h * 0.40
-        body = QRectF((w - bw)/2, h*0.42, bw, bh)
+        body = QRectF((w - bw)/2, body_y, bw, bh)
         p.drawRoundedRect(body, 2.5, 2.5)
-        sw, sh = w * 0.30, h * 0.38
-        shackle = QRectF((w - sw)/2, h*0.10, sw, sh)
-        p.drawArc(shackle, 0, 180 * 16)
-        kx, ky = w/2, h*0.60
-        p.drawEllipse(QPointF(kx, ky), 1.2, 1.2)
-        p.drawLine(QPointF(kx, ky+1.2), QPointF(kx, ky+4))
+        # keyhole
+        ky = body_y + bh * 0.42
+        p.drawEllipse(QPointF(w/2, ky), 1.2, 1.2)
+        p.drawLine(QPointF(w/2, ky+1.2), QPointF(w/2, ky+4))
+        # shackle: closed when locked, open when unlocked
+        if locked:
+            sw, sh = w * 0.30, h * 0.35
+            shackle = QRectF((w - sw)/2, h*0.08, sw, sh)
+            p.drawArc(shackle, 0, 180 * 16)
+        else:
+            sw, sh = w * 0.22, h * 0.22
+            shackle = QRectF((w - sw)/2, h*0.08, sw, sh)
+            p.drawArc(shackle, 0, 270 * 16)
         p.end()
 
     def mousePressEvent(self, event):
@@ -531,6 +541,8 @@ class MainWindow(QWidget):
     # ---- 锁定态:鼠标移出窗口隐藏锁头,移入再显示 ----
     def enterEvent(self, event):
         super().enterEvent(event)
+        if self._locked:
+            self.header.lock_btn.setVisible(True)
 
 
     def leaveEvent(self, event):
