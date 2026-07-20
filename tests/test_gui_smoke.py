@@ -8,8 +8,9 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import Qt, QEvent, QPointF
+from PySide6.QtCore import Qt, QEvent, QPointF, QPoint
 from PySide6.QtGui import QMouseEvent
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from sticky_tasks.main_window import MainWindow
@@ -136,6 +137,35 @@ def test_lock_hides_controls_and_unlock_restores(app):
         assert item.dot.isVisible()
         assert w.header.lock_btn.isVisible()
         assert w.header.lock_btn._locked == False
+
+
+def test_click_lock_icon_toggles_lock_and_unlock(app):
+    """回归:点击右上锁头图标可锁定,再点一次立即解锁并恢复全部控件。
+
+    用 QTest.mouseClick 真实走一遍事件管线(含窗口 eventFilter),
+    防止锁头点击被边缘缩放逻辑吞掉、或解锁后控件可见性不刷新。
+    """
+    with tempfile.TemporaryDirectory() as d:
+        store = TaskStore(Path(d) / "tasks.json")
+        store.add("任务一")
+        w = MainWindow(store)
+        w.show()
+        app.processEvents()
+        item = list(w._active_items.values())[0]
+
+        QTest.mouseClick(w.header.lock_btn, Qt.LeftButton, pos=QPoint(14, 14))
+        app.processEvents()
+        assert w._locked
+        assert not item.dot.isVisible()
+        assert not w._inline_add_btn.isVisible()
+        assert not w.footer_btn.isVisible()
+
+        QTest.mouseClick(w.header.lock_btn, Qt.LeftButton, pos=QPoint(14, 14))
+        app.processEvents()
+        assert not w._locked
+        assert item.dot.isVisible()
+        assert w._inline_add_btn.isVisible()
+        assert w.footer_btn.isVisible()
 
 
 def test_macos_style_header_structure(app):

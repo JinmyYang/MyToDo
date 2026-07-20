@@ -4,19 +4,19 @@ from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QPushButton, QLabel, QStackedWidget,
     QMenu, QFrame, QPlainTextEdit, QSizePolicy,
 )
-from PySide6.QtCore import Signal, Qt, QEvent, QTimer, QRect
+from PySide6.QtCore import Signal, Qt, QEvent, QTimer, QRect, QPointF
 from PySide6.QtGui import QCursor, QTextCursor, QPainter, QColor, QPen
 
 
 
 
 class DotButton(QWidget):
-    """Custom round dot button: QPainter-drawn circle, no native button artifacts."""
+    """自绘圆形完成按钮:悬停时圈内浮现对勾预览。"""
     clicked = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(20, 20)
+        self.setFixedSize(18, 18)
         self.setCursor(QCursor(Qt.PointingHandCursor))
         self.setFocusPolicy(Qt.NoFocus)
         self.setToolTip("标记为完成")
@@ -28,12 +28,21 @@ class DotButton(QWidget):
         p.setRenderHint(QPainter.Antialiasing)
         r = self.rect().adjusted(2, 2, -2, -2)
         if self._hovered:
-            p.setPen(QPen(QColor("#0a84ff"), 2))
-            p.setBrush(QColor(10, 132, 255, 50))
+            p.setPen(QPen(QColor("#5ea0ff"), 1.8))
+            p.setBrush(QColor(94, 160, 255, 42))
         else:
-            p.setPen(QPen(QColor("#63636b"), 2))
+            p.setPen(QPen(QColor("#55555f"), 1.5))
             p.setBrush(Qt.NoBrush)
         p.drawEllipse(r)
+        if self._hovered:
+            # 对勾预览:暗示点击即完成
+            pen = QPen(QColor("#5ea0ff"), 1.6)
+            pen.setCapStyle(Qt.RoundCap)
+            pen.setJoinStyle(Qt.RoundJoin)
+            p.setPen(pen)
+            cx, cy = self.width() / 2, self.height() / 2
+            p.drawLine(QPointF(cx - 3.2, cy + 0.2), QPointF(cx - 0.8, cy + 2.6))
+            p.drawLine(QPointF(cx - 0.8, cy + 2.6), QPointF(cx + 3.4, cy - 2.2))
         p.end()
 
     def enterEvent(self, event):
@@ -73,7 +82,7 @@ class TaskItem(QWidget):
 
         lay = QHBoxLayout(self)
         self._layout = lay
-        lay.setContentsMargins(14, 6, 14, 6)
+        lay.setContentsMargins(12, 7, 12, 7)
         lay.setSpacing(10)
 
         # 圆点:QPainter 手绘正圆
@@ -101,8 +110,8 @@ class TaskItem(QWidget):
     QLabel#taskText {
         background: transparent;
         border: none;
-        color: #f1f3f4;
-        font-size: 14px;
+        color: #e9e9ef;
+        font-size: 13px;
         padding: 0px;
     }
 """)
@@ -117,11 +126,11 @@ class TaskItem(QWidget):
         self.edit.setMinimumWidth(0)
         self.edit.setStyleSheet("""
     QPlainTextEdit#taskEdit {
-        background: rgba(255,255,255,16);
-        border: 1px solid #0a84ff;
+        background: rgba(255,255,255,12);
+        border: 1px solid rgba(94, 160, 255, 140);
         border-radius: 8px;
-        color: #f1f3f4;
-        font-size: 14px;
+        color: #f2f2f6;
+        font-size: 13px;
         padding: 5px 7px;
     }
 """)
@@ -141,9 +150,11 @@ class TaskItem(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         if self._hovered and self.stack.currentIndex() == self._LABEL_PAGE:
-            p.fillRect(self.rect(), QColor(255, 255, 255, 7))
-        p.setPen(QColor(255, 255, 255, 10))
-        p.drawLine(14, self.height() - 1, self.width() - 14, self.height() - 1)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(255, 255, 255, 6))
+            p.drawRoundedRect(self.rect().adjusted(4, 1, -4, 0), 9, 9)
+        p.setPen(QColor(255, 255, 255, 8))
+        p.drawLine(40, self.height() - 1, self.width() - 12, self.height() - 1)
         p.end()
 
     def enterEvent(self, event):
@@ -285,18 +296,19 @@ class TaskItem(QWidget):
         menu = QMenu(self)
         menu.setStyleSheet("""
             QMenu {
-                background: rgba(45, 46, 50, 240);
-                border: 1px solid rgba(255,255,255,18);
-                border-radius: 8px;
-                padding: 4px 0;
+                background: rgba(40, 41, 46, 245);
+                border: 1px solid rgba(255,255,255,16);
+                border-radius: 9px;
+                padding: 5px;
             }
             QMenu::item {
-                padding: 6px 24px;
-                color: #f1f3f4;
-                font-size: 13px;
+                padding: 6px 22px;
+                color: #e9e9ef;
+                font-size: 12px;
+                border-radius: 6px;
             }
             QMenu::item:selected {
-                background: #0a84ff;
+                background: rgba(94, 160, 255, 60);
                 color: #ffffff;
             }
         """)

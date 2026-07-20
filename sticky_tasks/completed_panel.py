@@ -10,29 +10,37 @@ from PySide6.QtGui import QCursor
 PANEL_QSS = """
 CompletedPanel { background: transparent; }
 QFrame#completedItem {
-    background: rgba(255, 255, 255, 5);
-    border-radius: 8px;
-    border-bottom: 1px solid rgba(255, 255, 255, 8);
-    margin: 0px 10px 0px;
-    padding: 3px 0;
+    background: rgba(255, 255, 255, 4);
+    border-radius: 9px;
+    margin: 1px 10px;
 }
 QFrame#completedItem:hover {
-    background: rgba(255,255,255,14);
+    background: rgba(255, 255, 255, 9);
 }
-QLabel#doneText { color: #98989f; font-size: 14px; }
-QLabel#doneTextDone { color: #98989f; font-size: 14px; }
+QLabel#doneText { color: #6e6e78; font-size: 12px; }
+QLabel#doneTextDone {
+    color: #8a8a94;
+    font-size: 12px;
+    text-decoration: line-through;
+}
 QPushButton#restoreBtn {
-    color: #a1a1aa; background: rgba(255, 255, 255, 8);
+    color: #8a8a94;
+    background: transparent;
     border: 1px solid rgba(255, 255, 255, 14);
-    border-radius: 10px;
-    padding: 1px 5px; font-size: 13px;
+    border-radius: 7px;
+    padding: 1px 4px;
+    font-size: 12px;
 }
-QPushButton#restoreBtn:hover { color: #ffffff; background: #0a84ff; border-color: #409cff; }
+QPushButton#restoreBtn:hover {
+    color: #ffffff;
+    background: rgba(94, 160, 255, 90);
+    border-color: rgba(94, 160, 255, 150);
+}
 QScrollArea { border: none; background: transparent; }
 QScrollArea viewport { background: transparent; }
 QWidget#bodyContainer { background: transparent; }
-QScrollBar:vertical { background: transparent; width: 6px; margin: 2px; }
-QScrollBar::handle:vertical { background: rgba(255,255,255,50); border-radius: 3px; min-height: 20px; }
+QScrollBar:vertical { background: transparent; width: 5px; margin: 2px; }
+QScrollBar::handle:vertical { background: rgba(255,255,255,36); border-radius: 2px; min-height: 20px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 """
 
@@ -52,18 +60,19 @@ class _CompletedRow(QFrame):
         menu = QMenu(self)
         menu.setStyleSheet("""
             QMenu {
-                background: rgba(45, 46, 50, 240);
-                border: 1px solid rgba(255,255,255,18);
-                border-radius: 8px;
-                padding: 4px 0;
+                background: rgba(40, 41, 46, 245);
+                border: 1px solid rgba(255,255,255,16);
+                border-radius: 9px;
+                padding: 5px;
             }
             QMenu::item {
-                padding: 6px 24px;
-                color: #f1f3f4;
-                font-size: 13px;
+                padding: 6px 22px;
+                color: #e9e9ef;
+                font-size: 12px;
+                border-radius: 6px;
             }
             QMenu::item:selected {
-                background: #0a84ff;
+                background: rgba(94, 160, 255, 60);
                 color: #ffffff;
             }
         """)
@@ -93,7 +102,7 @@ class CompletedPanel(QWidget):
         self.body_container.setObjectName("bodyContainer")
         self.body = QVBoxLayout(self.body_container)
         self.body.setContentsMargins(0, 0, 0, 0)
-        self.body.setSpacing(0)
+        self.body.setSpacing(4)
         self.body.addStretch()  # 末尾占位,任务顶对齐
         self.scroll.setWidget(self.body_container)
         v.addWidget(self.scroll, 1)
@@ -125,7 +134,7 @@ class CompletedPanel(QWidget):
         h.addWidget(lbl, 1)
         btn = QPushButton("↩")
         btn.setObjectName("restoreBtn")
-        btn.setFixedSize(24, 24)
+        btn.setFixedSize(22, 22)
         btn.setCursor(QCursor(Qt.PointingHandCursor))
         btn.setFocusPolicy(Qt.NoFocus)
         btn.setToolTip("恢复到任务列表")

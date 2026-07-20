@@ -2,10 +2,14 @@
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QScrollArea, QFrame,
-    QApplication, QMenu,
+    QApplication, QMenu, QGraphicsOpacityEffect,
 )
-from PySide6.QtCore import Qt, QEvent, QSize, QPointF, Signal, QRectF
-from PySide6.QtGui import QCursor, QPixmap, QPainter, QColor, QIcon, QFont, QPen
+from PySide6.QtCore import (
+    Qt, QEvent, QSize, QPointF, Signal, QRectF, QPropertyAnimation, QEasingCurve,
+)
+from PySide6.QtGui import (
+    QCursor, QPixmap, QPainter, QPainterPath, QColor, QIcon, QFont, QPen,
+)
 
 from .task_store import TaskStore
 from .task_item import TaskItem
@@ -13,57 +17,61 @@ from .completed_panel import CompletedPanel
 
 QSS = """
 QFrame#container {
-    background: rgba(30, 31, 35, 238);
-    border: 1px solid rgba(255, 255, 255, 28);
-    border-radius: 18px;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(37, 38, 44, 240),
+        stop:1 rgba(24, 25, 29, 246));
+    border: 1px solid rgba(255, 255, 255, 20);
+    border-radius: 16px;
 }
 QFrame#sectionSep {
-    background: rgba(255, 255, 255, 14);
+    background: rgba(255, 255, 255, 10);
     border: none;
     max-height: 1px;
 }
-QLabel { color: #f5f5f7; font-size: 13px; }
+QLabel { color: #eaeaf0; font-size: 13px; }
 QLabel#titleLabel {
-    color: #f5f5f7;
-    font-size: 15px;
-    font-weight: 600;
-    font-style: italic;
-    letter-spacing: 0.5px;
+    color: #9a9aa5;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2.5px;
 }
-QPushButton { color: #f5f5f7; background: transparent; border: none; }
+QPushButton { color: #eaeaf0; background: transparent; border: none; }
 QPushButton#inlineAddBtn {
-    color: #7a7a82;
-    background: rgba(255,255,255,5);
-    border: 1px dashed rgba(255,255,255,10);
-    border-radius: 8px;
-    font-size: 16px; font-weight: 500;
-    padding: 6px 0;
+    color: #5c5c66;
+    background: transparent;
+    border: none;
+    border-radius: 9px;
+    font-size: 17px;
+    font-weight: 400;
+    text-align: left;
+    padding: 5px 0 5px 16px;
 }
 QPushButton#inlineAddBtn:hover {
-    color: #c5c5cc;
-    border-color: rgba(255,255,255,20);
-    background: rgba(255,255,255,10);
+    color: #5ea0ff;
+    background: rgba(255, 255, 255, 7);
 }
 QPushButton#footerBtn {
-    color: #a1a1aa;
+    color: #7c7c86;
     text-align: left;
-    border-top: 1px solid rgba(255, 255, 255, 14);
-    padding: 10px 14px 11px;
-    font-size: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 10);
+    padding: 9px 14px 10px;
+    font-size: 11px;
     font-weight: 500;
+    letter-spacing: 0.3px;
 }
-QPushButton#footerBtn:hover { color: #f5f5f7; background: rgba(255, 255, 255, 8); }
+QPushButton#footerBtn:hover { color: #d0d0d8; background: rgba(255, 255, 255, 6); }
 QScrollArea#listScroll { border: none; background: transparent; }
 QScrollArea#listScroll viewport { background: transparent; }
 QWidget#listWidget { background: transparent; }
-QScrollBar:vertical { background: transparent; width: 7px; margin: 6px 2px; }
-QScrollBar::handle:vertical { background: rgba(255,255,255,55); border-radius: 3px; min-height: 24px; }
+QScrollBar:vertical { background: transparent; width: 5px; margin: 6px 3px 6px 0; }
+QScrollBar::handle:vertical { background: rgba(255,255,255,36); border-radius: 2px; min-height: 24px; }
+QScrollBar::handle:vertical:hover { background: rgba(255,255,255,58); }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
 """
 
 EDGE = 16           # 边 resize 检测宽度(覆盖到可见深色块最外沿,加宽便于命中)
-CORNER = 26         # 角 resize 检测范围(比边更宽,抵消 8px 外边距 + 14px 圆角,便于命中对角缩放)
+CORNER = 30         # 角 resize 检测范围(比边更宽,抵消 14px 外边距 + 16px 圆角,便于命中对角缩放)
 MIN_W, MIN_H = 220, 200
 PANEL_H = 160       # 已完成面板展开时向下扩展的高度
 
@@ -76,37 +84,63 @@ class LockButton(QWidget):
     def __init__(self, locked=False, parent=None):
         super().__init__(parent)
         self._locked = locked
+        self._sync_tooltip()
 
     def set_locked(self, locked):
         self._locked = locked
+        self._sync_tooltip()
         self.update()
+
+    def _sync_tooltip(self):
+        self.setToolTip("解锁窗口" if self._locked else "锁定窗口")
 
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         locked = self._locked
-        c = QColor("#f5f5f7") if locked else QColor("#8e8e93")
-        pen = QPen(c, 1.5); pen.setCapStyle(Qt.RoundCap); pen.setJoinStyle(Qt.RoundJoin)
-        p.setPen(pen); p.setBrush(Qt.NoBrush)
-        w, h = self.width(), self.height()
-        # body
-        body_y = h * 0.35 if locked else h * 0.28
-        bw, bh = w * 0.55, h * 0.40
-        body = QRectF((w - bw)/2, body_y, bw, bh)
+        # 像真实挂锁:锁上=锁梁压到底、双腿插进锁体;开锁=左腿留在锁体里当合页,
+        # 锁梁带着右腿绕左腿顶点整个转出去,悬在锁体上方。锁体与锁孔固定不动。
+        color = QColor("#eef0f4") if locked else QColor("#8e9099")
+        pen = QPen(color, 1.7)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+
+        # 锁体:两态位置、尺寸完全一致
+        body = QRectF(6.5, 14.0, 15.0, 10.5)
         p.drawRoundedRect(body, 2.5, 2.5)
-        # keyhole
-        ky = body_y + bh * 0.42
-        p.drawEllipse(QPointF(w/2, ky), 1.2, 1.2)
-        p.drawLine(QPointF(w/2, ky+1.2), QPointF(w/2, ky+4))
-        # shackle: closed when locked, open when unlocked
+
+        # 锁孔:圆点 + 短竖槽
+        p.setPen(Qt.NoPen)
+        p.setBrush(color)
+        p.drawEllipse(QPointF(14.0, 18.3), 1.4, 1.4)
+        p.setBrush(Qt.NoBrush)
+        p.setPen(pen)
+        p.drawLine(QPointF(14.0, 20.1), QPointF(14.0, 21.8))
+
         if locked:
-            sw, sh = w * 0.30, h * 0.35
-            shackle = QRectF((w - sw)/2, h*0.08, sw, sh)
-            p.drawArc(shackle, 0, 180 * 16)
+            # 锁上:一根连续的锁梁,双腿插入锁体
+            shackle = QPainterPath()
+            shackle.moveTo(10.0, 14.0)
+            shackle.lineTo(10.0, 10.2)
+            shackle.arcTo(QRectF(10.0, 6.2, 8.0, 8.0), 180.0, -180.0)
+            shackle.lineTo(18.0, 14.0)
+            p.drawPath(shackle)
         else:
-            sw, sh = w * 0.22, h * 0.22
-            shackle = QRectF((w - sw)/2, h*0.08, sw, sh)
-            p.drawArc(shackle, 0, 270 * 16)
+            # 合页侧:左腿留在锁体里,纹丝不动
+            p.drawLine(QPointF(10.0, 14.0), QPointF(10.0, 10.2))
+            # 活动侧:锁梁 + 右腿,绕左腿顶点(合页)转出去
+            swung = QPainterPath()
+            swung.moveTo(10.0, 10.2)
+            swung.arcTo(QRectF(10.0, 6.2, 8.0, 8.0), 180.0, -180.0)
+            swung.lineTo(18.0, 14.0)
+            p.save()
+            p.translate(10.0, 10.2)     # 原点移到左腿顶点(合页)
+            p.rotate(-70.0)             # 逆时针转开,负角=右腿向上甩出
+            p.translate(-10.0, -10.2)
+            p.drawPath(swung)
+            p.restore()
         p.end()
 
     def mousePressEvent(self, event):
@@ -129,11 +163,10 @@ class HeaderBar(QFrame):
         hl.addWidget(self.title_label)
         hl.addStretch()
 
-        # 加号:新建任务(与锁头同一行)
+        # 锁头:锁定/解锁窗口(提示文案随状态切换)
         self.lock_btn = LockButton(parent=self)
         self.lock_btn.setFixedSize(28, 28)
         self.lock_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        self.lock_btn.setToolTip("锁定")
         self.lock_btn.toggled.connect(lambda l: window.set_locked(l))
         hl.addWidget(self.lock_btn)
 
@@ -166,7 +199,7 @@ class MainWindow(QWidget):
         self.resize(320, 460)
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(8, 8, 8, 8)
+        outer.setContentsMargins(14, 14, 14, 14)
 
         self.container = QFrame()
         self.container.setObjectName("container")
@@ -251,15 +284,15 @@ class MainWindow(QWidget):
 
     def eventFilter(self, obj, event):
         et = event.type()
-        # footer 图标颜色随字体:通常灰(#9aa0a6),hover 变白(#ffffff)
+        # footer 图标颜色随字体:通常灰(#6e6e78),hover 提亮(#c8c8d2)
         if obj is self.footer_btn and not self._locked:
             if et == QEvent.Enter:
                 self.footer_btn.setIcon(
-                    QIcon(self._chevron_pixmap(self._chevron_dir(), color=QColor("#ffffff"))))
+                    QIcon(self._chevron_pixmap(self._chevron_dir(), color=QColor("#c8c8d2"))))
                 return False  # 不拦截,让默认 hover 样式继续生效
             elif et == QEvent.Leave:
                 self.footer_btn.setIcon(
-                    QIcon(self._chevron_pixmap(self._chevron_dir(), color=QColor("#9aa0a6"))))
+                    QIcon(self._chevron_pixmap(self._chevron_dir(), color=QColor("#6e6e78"))))
                 return False  # 不拦截,让默认 hover 样式继续生效
         if et == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
             pos = self.mapFromGlobal(event.globalPosition().toPoint())
@@ -286,6 +319,36 @@ class MainWindow(QWidget):
                 return True
         return super().eventFilter(obj, event)
 
+    # ---- 手绘悬浮投影 ----
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        self._draw_float_shadow(p)
+        p.end()
+
+    def _draw_float_shadow(self, p):
+        """在容器外沿手绘柔和投影。
+
+        不用 QGraphicsDropShadowEffect——它会把整个子树缓存成离屏图,锁定/解锁
+        切换子控件可见性时缓存不失效,导致画面停留旧状态、要鼠标划过才刷新。
+        这里改用多层低透明度圆角矩形由外向内叠加,逼近高斯模糊的柔和过渡,
+        纯绘制、无缓存,任何时刻都随窗口即时重画。
+        """
+        cr = QRectF(self.container.geometry())
+        radius = 16.0
+        spread = 13.0   # 投影向外扩散距离(略小于 14px 外边距,留 1px 透明边)
+        layers = 18
+        layer_alpha = 9
+        dy = 3.0        # 轻微下移,营造"悬浮"感
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(0, 0, 0, layer_alpha))
+        for i in range(layers, 0, -1):
+            expand = spread * i / layers
+            rect = cr.adjusted(-expand, -expand + dy, expand, expand + dy)
+            r = radius + expand
+            p.drawRoundedRect(rect, r, r)
+
     # ---- 加载 ----
     def load_tasks(self):
         for t in self.store.active_tasks():
@@ -303,9 +366,24 @@ class MainWindow(QWidget):
         self._active_items[task.id] = item
         if self._edge_watch_ready:
             self._watch_widget(item)  # 新任务行也纳入边缘检测
+        self._fade_in(item)
         if focus:
             item.start_edit()
         return item
+
+    def _fade_in(self, item):
+        """新任务行淡入,完成后移除特效减少渲染开销。"""
+        effect = QGraphicsOpacityEffect(item)
+        effect.setOpacity(0)
+        item.setGraphicsEffect(effect)
+        anim = QPropertyAnimation(effect, b"opacity")
+        anim.setDuration(220)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.OutCubic)
+        anim.finished.connect(lambda: item.setGraphicsEffect(None))
+        item._fade_anim = anim  # 持有引用,防止动画被提前回收
+        anim.start()
 
     # ---- 操作 ----
     def add_task(self):
@@ -375,7 +453,7 @@ class MainWindow(QWidget):
     def _chevron_dir(self):
         return "down" if self._completed_expanded else "right"
 
-    def _chevron_pixmap(self, direction, size=14, color=QColor("#9aa0a6")):
+    def _chevron_pixmap(self, direction, size=14, color=QColor("#6e6e78")):
         """用 QPainter 画矢量 chevron:浮点坐标严格对称 + 按设备像素比(DPR)高清渲染,不糊。"""
         try:
             dpr = QApplication.primaryScreen().devicePixelRatio() or 1.0
