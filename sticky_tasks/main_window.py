@@ -31,15 +31,19 @@ QLabel#titleLabel {
     letter-spacing: 0.5px;
 }
 QPushButton { color: #f5f5f7; background: transparent; border: none; }
-QPushButton#addBtn {
-    background: #0a84ff;
-    border: 1px solid rgba(255, 255, 255, 42);
-    border-radius: 12px;
-    font-size: 19px; font-weight: 500;
-    min-width: 24px; min-height: 24px;
+QPushButton#inlineAddBtn {
+    color: #7a7a82;
+    background: rgba(255,255,255,5);
+    border: 1px dashed rgba(255,255,255,10);
+    border-radius: 8px;
+    font-size: 16px; font-weight: 500;
+    padding: 6px 0;
 }
-QPushButton#addBtn:hover { background: #409cff; }
-QPushButton#addBtn:pressed { background: #006edb; }
+QPushButton#inlineAddBtn:hover {
+    color: #c5c5cc;
+    border-color: rgba(255,255,255,20);
+    background: rgba(255,255,255,10);
+}
 QPushButton#footerBtn {
     color: #a1a1aa;
     text-align: left;
@@ -116,15 +120,6 @@ class HeaderBar(QFrame):
         hl.addStretch()
 
         # 加号:新建任务(与锁头同一行)
-        self.add_btn = QPushButton("+")
-        self.add_btn.setObjectName("addBtn")
-        self.add_btn.setFixedSize(28, 28)
-        self.add_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        self.add_btn.setFocusPolicy(Qt.NoFocus)
-        self.add_btn.setToolTip("新建任务")
-        self.add_btn.clicked.connect(window.add_task)
-        hl.addWidget(self.add_btn)
-
         self.lock_btn = LockButton(parent=self)
         self.lock_btn.setFixedSize(28, 28)
         self.lock_btn.setCursor(QCursor(Qt.PointingHandCursor))
@@ -199,6 +194,16 @@ class MainWindow(QWidget):
         self.list_layout.addStretch()  # 末尾占位,任务顶对齐
         self.scroll.setWidget(self.list_widget)
         v.addWidget(self.scroll, 1)
+
+        # ---- 行内加号(任务列表下方)----
+        self._inline_add_btn = QPushButton("+")
+        self._inline_add_btn.setObjectName("inlineAddBtn")
+        self._inline_add_btn.setFixedHeight(32)
+        self._inline_add_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self._inline_add_btn.setFocusPolicy(Qt.NoFocus)
+        self._inline_add_btn.setToolTip("新建任务")
+        self._inline_add_btn.clicked.connect(self.add_task)
+        v.addWidget(self._inline_add_btn)
 
         # ---- 底部:已完成按钮(触发面板向下展开,chevron 图标表示展开/收起)----
         self.footer_btn = QPushButton("已完成 (0)")
@@ -396,7 +401,7 @@ class MainWindow(QWidget):
         # 锁头按钮始终保留在右上角原处,仅切换图标与提示
         self.header.lock_btn.set_locked(locked)
         self.header.lock_btn.setVisible(True)
-        self.header.add_btn.setVisible(not locked)
+        self._inline_add_btn.setVisible(not locked)
         self.footer_btn.setVisible(not locked)
         if locked and self._completed_expanded:
             self.toggle_completed()  # 锁定时收起已完成面板

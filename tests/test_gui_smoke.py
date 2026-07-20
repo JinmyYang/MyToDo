@@ -126,7 +126,7 @@ def test_lock_hides_controls_and_unlock_restores(app):
         w.set_locked(True)
         app.processEvents()
         assert not item.dot.isVisible()
-        assert not w.header.add_btn.isVisible()
+        assert not w._inline_add_btn.isVisible()
         assert w.header.lock_btn.isVisible()
         assert w.header.lock_btn._locked == True
         assert not w.footer_btn.isVisible()
@@ -134,20 +134,18 @@ def test_lock_hides_controls_and_unlock_restores(app):
         w.unlock()
         app.processEvents()
         assert item.dot.isVisible()
-        assert w.header.add_btn.isVisible()
         assert w.header.lock_btn.isVisible()
         assert w.header.lock_btn._locked == False
 
 
 def test_macos_style_header_structure(app):
-    """主窗口保留简洁标语与圆形操作按钮的视觉结构。"""
+    """标题栏保留标语与锁头图标、底部保留行内加号。"""
     with tempfile.TemporaryDirectory() as d:
         store = TaskStore(Path(d) / "tasks.json")
         w = MainWindow(store)
 
         assert w.header.title_label.text() == "JUST DO IT."
-        assert w.header.add_btn.size() == w.header.lock_btn.size()
-        assert w.header.add_btn.width() == 28
+        assert w.header.lock_btn.width() == 28
 
 
 def test_task_rows_stay_compact_when_window_grows(app):
