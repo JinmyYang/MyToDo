@@ -128,7 +128,7 @@ def test_lock_hides_controls_and_unlock_restores(app):
         assert not item.dot.isVisible()
         assert not w.header.add_btn.isVisible()
         assert w.header.lock_btn.isVisible()
-        assert w.header.lock_btn.text() == "解"
+        assert w.header.lock_btn._locked == True
         assert not w.footer_btn.isVisible()
 
         w.unlock()
@@ -136,7 +136,7 @@ def test_lock_hides_controls_and_unlock_restores(app):
         assert item.dot.isVisible()
         assert w.header.add_btn.isVisible()
         assert w.header.lock_btn.isVisible()
-        assert w.header.lock_btn.text() == "锁"
+        assert w.header.lock_btn._locked == False
 
 
 def test_macos_style_header_structure(app):

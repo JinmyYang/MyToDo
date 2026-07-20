@@ -4,8 +4,8 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QScrollArea, QFrame,
     QApplication, QMenu,
 )
-from PySide6.QtCore import Qt, QEvent, QSize, QPointF
-from PySide6.QtGui import QCursor, QPixmap, QPainter, QColor, QIcon, QFont
+from PySide6.QtCore import Qt, QEvent, QSize, QPointF, Signal, QRectF
+from PySide6.QtGui import QCursor, QPixmap, QPainter, QColor, QIcon, QFont, QPen
 
 from .task_store import TaskStore
 from .task_item import TaskItem
@@ -49,16 +49,6 @@ QPushButton#footerBtn {
     font-weight: 500;
 }
 QPushButton#footerBtn:hover { color: #f5f5f7; background: rgba(255, 255, 255, 8); }
-QPushButton#lockBtn {
-    color: #b5b5bd;
-    background: rgba(255, 255, 255, 10);
-    border: 1px solid rgba(255, 255, 255, 14);
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 600;
-}
-QPushButton#lockBtn:hover { color: #ffffff; background: rgba(255, 255, 255, 18); }
-QPushButton#lockBtn:pressed { background: rgba(255, 255, 255, 28); }
 QScrollArea#listScroll { border: none; background: transparent; }
 QScrollArea#listScroll viewport { background: transparent; }
 QWidget#listWidget { background: transparent; }
@@ -73,6 +63,41 @@ CORNER = 26         # 角 resize 检测范围(比边更宽,抵消 8px 外边距 
 MIN_W, MIN_H = 220, 200
 PANEL_H = 160       # 已完成面板展开时向下扩展的高度
 
+
+
+
+class LockButton(QWidget):
+    toggled = Signal(bool)
+
+    def __init__(self, locked=False, parent=None):
+        super().__init__(parent)
+        self._locked = locked
+
+    def set_locked(self, locked):
+        self._locked = locked
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        c = QColor("#f5f5f7") if self._locked else QColor("#8e8e93")
+        pen = QPen(c, 1.5); pen.setCapStyle(Qt.RoundCap); pen.setJoinStyle(Qt.RoundJoin)
+        p.setPen(pen); p.setBrush(Qt.NoBrush)
+        w, h = self.width(), self.height()
+        bw, bh = w * 0.55, h * 0.40
+        body = QRectF((w - bw)/2, h*0.42, bw, bh)
+        p.drawRoundedRect(body, 2.5, 2.5)
+        sw, sh = w * 0.30, h * 0.38
+        shackle = QRectF((w - sw)/2, h*0.10, sw, sh)
+        p.drawArc(shackle, 0, 180 * 16)
+        kx, ky = w/2, h*0.60
+        p.drawEllipse(QPointF(kx, ky), 1.2, 1.2)
+        p.drawLine(QPointF(kx, ky+1.2), QPointF(kx, ky+4))
+        p.end()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.toggled.emit(not self._locked)
 
 class HeaderBar(QFrame):
     """上方栏:加号与锁头横向排列、空白可拖动、右键退出/解锁。"""
@@ -100,13 +125,11 @@ class HeaderBar(QFrame):
         self.add_btn.clicked.connect(window.add_task)
         hl.addWidget(self.add_btn)
 
-        self.lock_btn = QPushButton("锁")
-        self.lock_btn.setObjectName("lockBtn")
+        self.lock_btn = LockButton(parent=self)
         self.lock_btn.setFixedSize(28, 28)
         self.lock_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        self.lock_btn.setFocusPolicy(Qt.NoFocus)
         self.lock_btn.setToolTip("锁定")
-        self.lock_btn.clicked.connect(lambda checked=False: window.toggle_locked())
+        self.lock_btn.toggled.connect(lambda l: window.set_locked(l))
         hl.addWidget(self.lock_btn)
 
     def contextMenuEvent(self, event):
@@ -371,12 +394,7 @@ class MainWindow(QWidget):
     def set_locked(self, locked):
         self._locked = locked
         # 锁头按钮始终保留在右上角原处,仅切换图标与提示
-        if locked:
-            self.header.lock_btn.setText("解")
-            self.header.lock_btn.setToolTip("解锁")
-        else:
-            self.header.lock_btn.setText("锁")
-            self.header.lock_btn.setToolTip("锁定")
+        self.header.lock_btn.set_locked(locked)
         self.header.lock_btn.setVisible(True)
         self.header.add_btn.setVisible(not locked)
         self.footer_btn.setVisible(not locked)
@@ -508,13 +526,11 @@ class MainWindow(QWidget):
     # ---- 锁定态:鼠标移出窗口隐藏锁头,移入再显示 ----
     def enterEvent(self, event):
         super().enterEvent(event)
-        if self._locked:
-            self.header.lock_btn.setVisible(True)
+
 
     def leaveEvent(self, event):
         super().leaveEvent(event)
         # 鼠标真正离开窗口且不在缩放中时,复位 resize 光标
         if self._resize_dir is None:
             self._apply_edge_cursor(None)
-        if self._locked:
-            self.header.lock_btn.setVisible(False)
+
