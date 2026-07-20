@@ -27,6 +27,7 @@ QLabel#titleLabel {
     color: #f5f5f7;
     font-size: 15px;
     font-weight: 600;
+    font-style: italic;
     letter-spacing: 0.5px;
 }
 QPushButton { color: #f5f5f7; background: transparent; border: none; }
@@ -84,7 +85,7 @@ class HeaderBar(QFrame):
         hl.setContentsMargins(16, 12, 12, 8)
         hl.setSpacing(7)
 
-        self.title_label = QLabel("JUST DO IT")
+        self.title_label = QLabel("JUST DO IT.")
         self.title_label.setObjectName("titleLabel")
         hl.addWidget(self.title_label)
         hl.addStretch()
