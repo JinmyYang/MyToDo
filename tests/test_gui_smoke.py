@@ -145,7 +145,7 @@ def test_macos_style_header_structure(app):
         store = TaskStore(Path(d) / "tasks.json")
         w = MainWindow(store)
 
-        assert w.header.title_label.text() == "just do it"
+        assert w.header.title_label.text() == "JUST DO IT"
         assert w.header.add_btn.size() == w.header.lock_btn.size()
         assert w.header.add_btn.width() == 28
 
