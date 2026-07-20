@@ -19,8 +19,8 @@ QFrame#completedItem {
 QFrame#completedItem:hover {
     background: rgba(255,255,255,14);
 }
-QLabel#doneText { color: #98989f; font-size: 12px; }
-QLabel#doneTextDone { color: #98989f; font-size: 12px; text-decoration: line-through; }
+QLabel#doneText { color: #98989f; font-size: 14px; }
+QLabel#doneTextDone { color: #98989f; font-size: 14px; }
 QPushButton#restoreBtn {
     color: #a1a1aa; background: rgba(255, 255, 255, 8);
     border: 1px solid rgba(255, 255, 255, 14);

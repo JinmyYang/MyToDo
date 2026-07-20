@@ -41,7 +41,7 @@ def test_core_flow(app):
         app.processEvents()
         assert len(w._active_items) == 2
         assert len(store.completed_tasks()) == 1
-        assert w.footer_btn.text().startswith("已完成 (1)")
+        assert w.footer_btn.text().startswith("已完成  1")
 
         # 展开已完成面板并恢复
         w.toggle_completed()
@@ -50,7 +50,7 @@ def test_core_flow(app):
         app.processEvents()
         assert len(w._active_items) == 3
         assert len(store.completed_tasks()) == 0
-        assert w.footer_btn.text().startswith("已完成 (0)")
+        assert w.footer_btn.text().startswith("已完成  0")
 
         # 新建任务并填文本(默认展示 label,需先进入编辑态)
         w.add_task()
@@ -109,7 +109,7 @@ def test_persistence_reload_restores_ui(app):
         w.show()
         app.processEvents()
         assert len(w._active_items) == 1
-        assert w.footer_btn.text().startswith("已完成 (1)")
+        assert w.footer_btn.text().startswith("已完成  1")
 
 
 def test_lock_hides_controls_and_unlock_restores(app):
@@ -313,4 +313,4 @@ def test_completed_right_click_delete(app):
         app.processEvents()
         assert len(store.completed_tasks()) == 0
         assert store.get(t.id) is None
-        assert w.footer_btn.text().startswith("已完成 (0)")
+        assert w.footer_btn.text().startswith("已完成  0")

@@ -327,7 +327,7 @@ class MainWindow(QWidget):
 
     def _footer_text(self):
         n = len(self.store.completed_tasks())
-        return f"已完成 ({n})"
+        return f"已完成  {n}"
 
     def _update_footer(self):
         self.footer_btn.setText(self._footer_text())
