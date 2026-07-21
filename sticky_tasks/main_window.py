@@ -98,9 +98,8 @@ class LockButton(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         locked = self._locked
-        # 像真实挂锁:锁上=锁梁压到底、双腿插进锁体;开锁=左腿留在锁体里当合页,
-        # 锁梁带着右腿绕左腿顶点整个转出去,悬在锁体上方。锁体与锁孔固定不动。
-        color = QColor("#eef0f4") if locked else QColor("#8e9099")
+        # 锁上/未锁用同一种安静的灰,不靠亮度变化抢眼;状态差异由锁梁位置表达。
+        color = QColor("#8e9099")
         pen = QPen(color, 1.7)
         pen.setCapStyle(Qt.RoundCap)
         pen.setJoinStyle(Qt.RoundJoin)
@@ -475,7 +474,7 @@ class MainWindow(QWidget):
     # ---- 锁定/解锁 ----
     def set_locked(self, locked):
         self._locked = locked
-        # 锁头按钮始终保留在右上角原处,仅切换图标与提示
+        # 锁头位置固定在右上角;锁上时先显示,鼠标移出窗口再隐藏(见 leaveEvent)
         self.header.lock_btn.set_locked(locked)
         self.header.lock_btn.setVisible(True)
         self._inline_add_btn.setVisible(not locked)
@@ -614,6 +613,9 @@ class MainWindow(QWidget):
 
     def leaveEvent(self, event):
         super().leaveEvent(event)
+        # 锁定时鼠标移出窗口即隐藏锁头(移入时 enterEvent 再显示)
+        if self._locked:
+            self.header.lock_btn.setVisible(False)
         # 鼠标真正离开窗口且不在缩放中时,复位 resize 光标
         if self._resize_dir is None:
             self._apply_edge_cursor(None)
