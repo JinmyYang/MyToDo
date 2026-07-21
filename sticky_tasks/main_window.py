@@ -222,11 +222,8 @@ class MainWindow(QWidget):
         self.list_layout.setContentsMargins(0, 0, 0, 0)
         self.list_layout.setSpacing(0)
         self.list_layout.setAlignment(Qt.AlignTop)
-        self.list_layout.addStretch()  # 末尾占位,任务顶对齐
-        self.scroll.setWidget(self.list_widget)
-        v.addWidget(self.scroll, 1)
 
-        # ---- 行内加号(任务列表下方)----
+        # ---- 行内加号:放进列表里,始终紧跟最后一个任务 ----
         self._inline_add_btn = QPushButton("+")
         self._inline_add_btn.setObjectName("inlineAddBtn")
         self._inline_add_btn.setFixedHeight(32)
@@ -234,7 +231,11 @@ class MainWindow(QWidget):
         self._inline_add_btn.setFocusPolicy(Qt.NoFocus)
         self._inline_add_btn.setToolTip("新建任务")
         self._inline_add_btn.clicked.connect(self.add_task)
-        v.addWidget(self._inline_add_btn)
+        self.list_layout.addWidget(self._inline_add_btn)
+
+        self.list_layout.addStretch()  # 末尾占位,任务顶对齐
+        self.scroll.setWidget(self.list_widget)
+        v.addWidget(self.scroll, 1)
 
         # ---- 底部:已完成按钮(触发面板向下展开,chevron 图标表示展开/收起)----
         self.footer_btn = QPushButton("已完成 (0)")
@@ -349,8 +350,8 @@ class MainWindow(QWidget):
         item.completed.connect(self.on_complete)
         item.text_changed.connect(self.on_text_changed)
         item.delete_requested.connect(self.on_delete)
-        # 插到末尾 stretch 之前
-        self.list_layout.insertWidget(self.list_layout.count() - 1, item)
+        # 插到加号按钮之前(加号始终紧跟最后一个任务,其后才是末尾 stretch)
+        self.list_layout.insertWidget(self.list_layout.count() - 2, item)
         self._active_items[task.id] = item
         if self._edge_watch_ready:
             self._watch_widget(item)  # 新任务行也纳入边缘检测
