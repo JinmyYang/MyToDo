@@ -144,6 +144,8 @@ class HeaderBar(QFrame):
         hl = QHBoxLayout(self)
         hl.setContentsMargins(16, 12, 12, 8)
         hl.setSpacing(7)
+        # 固定高度:锁头隐藏(锁定+鼠标移出)时顶部栏不塌缩
+        self.setFixedHeight(12 + 28 + 8)
 
         self.title_label = QLabel("JUST DO IT.")
         self.title_label.setObjectName("titleLabel")
@@ -500,6 +502,8 @@ class MainWindow(QWidget):
 
     # ---- 边缘 8 方向 resize ----
     def _edge(self, pos):
+        if self._locked:          # 锁定后不允许调整窗口大小
+            return None
         x, y = pos.x(), pos.y()
         w, h = self.width(), self.height()
         # 角:用更大的 CORNER 范围优先判定,便于命中对角缩放
