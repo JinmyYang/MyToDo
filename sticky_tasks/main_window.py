@@ -119,28 +119,16 @@ class LockButton(QWidget):
         p.setPen(pen)
         p.drawLine(QPointF(14.0, 20.1), QPointF(14.0, 21.8))
 
-        if locked:
-            # 锁上:一根连续的锁梁,双腿插入锁体
-            shackle = QPainterPath()
-            shackle.moveTo(10.0, 14.0)
-            shackle.lineTo(10.0, 10.2)
-            shackle.arcTo(QRectF(10.0, 6.2, 8.0, 8.0), 180.0, -180.0)
-            shackle.lineTo(18.0, 14.0)
-            p.drawPath(shackle)
-        else:
-            # 合页侧:左腿留在锁体里,纹丝不动
-            p.drawLine(QPointF(10.0, 14.0), QPointF(10.0, 10.2))
-            # 活动侧:锁梁 + 右腿,绕左腿顶点(合页)转出去
-            swung = QPainterPath()
-            swung.moveTo(10.0, 10.2)
-            swung.arcTo(QRectF(10.0, 6.2, 8.0, 8.0), 180.0, -180.0)
-            swung.lineTo(18.0, 14.0)
-            p.save()
-            p.translate(10.0, 10.2)     # 原点移到左腿顶点(合页)
-            p.rotate(-70.0)             # 逆时针转开,负角=右腿向上甩出
-            p.translate(-10.0, -10.2)
-            p.drawPath(swung)
-            p.restore()
+        # 锁梁:锁上=居中扣在锁体上;开锁=整体向右平移错开锁体。
+        # (真实挂锁是锁梁绕腿轴前后甩开的三维动作,二维图标画不出深度旋转,
+        #  用左右平移来表现这个"甩出"——锁梁错开锁体即表示已开。)
+        shift = 0.0 if locked else 5.0
+        shackle = QPainterPath()
+        shackle.moveTo(10.0 + shift, 14.0)
+        shackle.lineTo(10.0 + shift, 10.2)
+        shackle.arcTo(QRectF(10.0 + shift, 6.2, 8.0, 8.0), 180.0, -180.0)
+        shackle.lineTo(18.0 + shift, 14.0)
+        p.drawPath(shackle)
         p.end()
 
     def mousePressEvent(self, event):
