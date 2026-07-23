@@ -20,7 +20,7 @@ QFrame#container {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
         stop:0 rgba(37, 38, 44, 240),
         stop:1 rgba(24, 25, 29, 246));
-    border: 1px solid rgba(255, 255, 255, 20);
+    border: none;
     border-radius: 8px;
 }
 QFrame#sectionSep {
@@ -188,7 +188,7 @@ class MainWindow(QWidget):
         self.resize(320, 460)
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(14, 14, 14, 14)
+        outer.setContentsMargins(8, 8, 8, 8)
 
         self.container = QFrame()
         self.container.setObjectName("container")
@@ -309,34 +309,32 @@ class MainWindow(QWidget):
                 return True
         return super().eventFilter(obj, event)
 
-    # ---- 手绘悬浮投影 ----
+    # ---- 边缘虚化 ----
     def paintEvent(self, event):
         super().paintEvent(event)
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        self._draw_float_shadow(p)
+        self._draw_edge_fade(p)
         p.end()
 
-    def _draw_float_shadow(self, p):
-        """在容器外沿手绘柔和投影。
+    def _draw_edge_fade(self, p):
+        """容器边缘向外逐渐虚化(羽化),替代硬阴影。
 
-        不用 QGraphicsDropShadowEffect——它会把整个子树缓存成离屏图,锁定/解锁
-        切换子控件可见性时缓存不失效,导致画面停留旧状态、要鼠标划过才刷新。
-        这里改用多层低透明度圆角矩形由外向内叠加,逼近高斯模糊的柔和过渡,
-        纯绘制、无缓存,任何时刻都随窗口即时重画。
+        从容器边缘向外画多层同心圆角矩形,越往外 alpha 越低,
+        形成背景色→透明的柔和过渡,让窗口边缘自然融入桌面。
         """
         cr = QRectF(self.container.geometry())
         radius = 8.0
-        spread = 13.0   # 投影向外扩散距离(略小于 14px 外边距,留 1px 透明边)
-        layers = 18
-        layer_alpha = 9
-        dy = 3.0        # 轻微下移,营造"悬浮"感
+        fade = 7.0       # 虚化区域宽度(略小于 8px 外边距)
+        layers = 14
         p.setPen(Qt.NoPen)
-        p.setBrush(QColor(0, 0, 0, layer_alpha))
         for i in range(layers, 0, -1):
-            expand = spread * i / layers
-            rect = cr.adjusted(-expand, -expand + dy, expand, expand + dy)
+            expand = fade * i / layers
+            # 越贴近容器边缘越不透明,最外层趋近全透明
+            alpha = int(56 * (1.0 - (i - 1) / layers))
+            rect = cr.adjusted(-expand, -expand, expand, expand)
             r = radius + expand
+            p.setBrush(QColor(30, 31, 36, alpha))
             p.drawRoundedRect(rect, r, r)
 
     # ---- 加载 ----
