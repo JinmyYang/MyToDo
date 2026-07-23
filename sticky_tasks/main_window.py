@@ -106,8 +106,8 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
 """
 
-EDGE = 16           # 边 resize 检测宽度(覆盖到可见深色块最外沿,加宽便于命中)
-CORNER = 30         # 角 resize 检测范围(比边更宽,抵消 14px 外边距 + 16px 圆角,便于命中对角缩放)
+EDGE = 10           # 边 resize 检测宽度(匹配 8px 外边距)
+CORNER = 14         # 角 resize 检测范围(缩小避免与右下角设置按钮重叠)
 MIN_W, MIN_H = 220, 200
 PANEL_H = 160       # 已完成面板展开时向下扩展的高度
 
@@ -574,13 +574,13 @@ class MainWindow(QWidget):
     # ---- 设置 ----
     def open_settings(self):
         # 已打开则置顶,不重复创建
-        if hasattr(self, "_settings_win") and self._settings_win is not None:
-            self._settings_win.raise_()
-            self._settings_win.activateWindow()
+        win = getattr(self, "_settings_win", None)
+        if win is not None and win.isVisible():
+            win.raise_()
+            win.activateWindow()
             return
         win = SettingsWindow(self.settings, parent=None)
         win.changed.connect(self._on_settings_changed)
-        win.destroyed.connect(lambda: setattr(self, "_settings_win", None))
         self._settings_win = win
         win.show()
 

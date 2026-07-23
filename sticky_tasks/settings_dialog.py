@@ -64,6 +64,16 @@ QSpinBox {
 QSpinBox::up-button, QSpinBox::down-button { width: 16px; }
 """
 
+# 预设主题:每套包含 bg_color, text_color, font_family, font_size, bg_opacity
+PRESETS = [
+    {"name": "深空",   "bg": "#25262c", "text": "#e9e9ef", "font": "Segoe UI Variable", "size": 13, "opacity": 240},
+    {"name": "暖夜",   "bg": "#2c2420", "text": "#f0e6dc", "font": "Microsoft YaHei UI", "size": 13, "opacity": 235},
+    {"name": "森林",   "bg": "#1e2a22", "text": "#e4f0e8", "font": "Microsoft YaHei UI", "size": 13, "opacity": 238},
+    {"name": "海洋",   "bg": "#1a2432", "text": "#dce8f4", "font": "Segoe UI Variable", "size": 13, "opacity": 240},
+    {"name": "薰衣草", "bg": "#282430", "text": "#ece6f4", "font": "Microsoft YaHei UI", "size": 13, "opacity": 236},
+    {"name": "素白",   "bg": "#f2f2f4", "text": "#2c2c32", "font": "Microsoft YaHei UI", "size": 13, "opacity": 248},
+]
+
 
 class SettingsWindow(QWidget):
     """外观设置独立窗口(非模态,实时预览)。"""
@@ -74,6 +84,7 @@ class SettingsWindow(QWidget):
         super().__init__(parent)
         self.setWindowTitle("外观设置")
         self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint)
+        self.setAttribute(Qt.WA_DeleteOnClose)  # 关闭即销毁,允许重新打开
         self.setStyleSheet(WINDOW_QSS)
         self.setFixedWidth(300)
 
@@ -89,6 +100,30 @@ class SettingsWindow(QWidget):
         title = QLabel("外观设置")
         title.setObjectName("sectionTitle")
         root.addWidget(title)
+
+        # ---- 预设主题 ----
+        root.addWidget(self._row_label("预设"))
+        preset_row = QHBoxLayout()
+        preset_row.setSpacing(8)
+        for p in PRESETS:
+            btn = QPushButton()
+            btn.setFixedSize(28, 28)
+            btn.setCursor(QCursor(Qt.PointingHandCursor))
+            btn.setToolTip(p["name"])
+            btn.setStyleSheet(
+                f"QPushButton {{"
+                f"  background: {p['bg']};"
+                f"  border: 2px solid rgba(255,255,255,40);"
+                f"  border-radius: 14px;"
+                f"}}"
+                f"QPushButton:hover {{"
+                f"  border-color: #5ea0ff;"
+                f"}}"
+            )
+            btn.clicked.connect(lambda checked=False, preset=p: self._apply_preset(preset))
+            preset_row.addWidget(btn)
+        preset_row.addStretch()
+        root.addLayout(preset_row)
 
         # ---- 背景颜色 ----
         root.addWidget(self._row_label("背景颜色"))
@@ -160,7 +195,8 @@ class SettingsWindow(QWidget):
     # ---- 工具 ----
     def _row_label(self, text):
         lbl = QLabel(text)
-        lbl.setStyleSheet("color: #8a8a94; font-size: 11px; margin-bottom: -6px;")
+        lbl.setStyleSheet("color: #8a8a94; font-size: 12px;")
+        lbl.setFixedHeight(18)
         return lbl
 
     def _make_color_btn(self, color: QColor) -> QPushButton:
@@ -221,6 +257,18 @@ class SettingsWindow(QWidget):
 
     def _on_opacity_changed(self, val):
         self._op_label.setText(f"{int(val / 255 * 100)}%")
+        self._emit_changed()
+
+    def _apply_preset(self, preset):
+        """一键应用预设主题。"""
+        self._bg_color = QColor(preset["bg"])
+        self._txt_color = QColor(preset["text"])
+        self._font_family = preset["font"]
+        self._paint_color_btn(self._bg_btn, self._bg_color)
+        self._paint_color_btn(self._txt_btn, self._txt_color)
+        self._font_label.setText(self._font_family)
+        self._size_spin.setValue(preset["size"])
+        self._op_slider.setValue(preset["opacity"])
         self._emit_changed()
 
     def _reset(self):
