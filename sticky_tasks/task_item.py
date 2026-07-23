@@ -214,6 +214,7 @@ class TaskItem(QWidget):
         padding: 5px 7px;
     }}
 """)
+        self._schedule_fit_height()
         self.update()
 
     # ---- 编辑 ----
