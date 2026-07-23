@@ -573,9 +573,10 @@ class MainWindow(QWidget):
 
     # ---- 设置 ----
     def open_settings(self):
-        # 已打开则置顶,不重复创建
         win = getattr(self, "_settings_win", None)
-        if win is not None and win.isVisible():
+        if win is not None:
+            # 窗口已存在(可能只是被关闭隐藏),直接显示
+            win.show()
             win.raise_()
             win.activateWindow()
             return

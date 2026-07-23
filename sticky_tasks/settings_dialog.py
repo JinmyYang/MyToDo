@@ -84,7 +84,6 @@ class SettingsWindow(QWidget):
         super().__init__(parent)
         self.setWindowTitle("外观设置")
         self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint)
-        self.setAttribute(Qt.WA_DeleteOnClose)  # 关闭即销毁,允许重新打开
         self.setStyleSheet(WINDOW_QSS)
         self.setFixedWidth(300)
 
