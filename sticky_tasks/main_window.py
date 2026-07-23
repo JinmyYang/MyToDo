@@ -21,7 +21,7 @@ QFrame#container {
         stop:0 rgba(37, 38, 44, 240),
         stop:1 rgba(24, 25, 29, 246));
     border: 1px solid rgba(255, 255, 255, 20);
-    border-radius: 16px;
+    border-radius: 8px;
 }
 QFrame#sectionSep {
     background: rgba(255, 255, 255, 10);
@@ -326,7 +326,7 @@ class MainWindow(QWidget):
         纯绘制、无缓存,任何时刻都随窗口即时重画。
         """
         cr = QRectF(self.container.geometry())
-        radius = 16.0
+        radius = 8.0
         spread = 13.0   # 投影向外扩散距离(略小于 14px 外边距,留 1px 透明边)
         layers = 18
         layer_alpha = 9
