@@ -14,13 +14,14 @@ from sticky_tasks.task_store import TaskStore
 
 DATA_DIR = Path.home() / ".sticky_tasks"
 DATA_FILE = DATA_DIR / "tasks.json"
+SETTINGS_FILE = DATA_DIR / "settings.json"
 
 
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("桌面便签")
     store = TaskStore(DATA_FILE)
-    window = MainWindow(store)
+    window = MainWindow(store, settings_path=SETTINGS_FILE)
     window.show()
     sys.exit(app.exec())
 

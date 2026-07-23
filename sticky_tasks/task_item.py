@@ -7,6 +7,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal, Qt, QEvent, QTimer, QRect, QPointF
 from PySide6.QtGui import QCursor, QTextCursor, QPainter, QColor, QPen
 
+from .app_settings import Theme
+
 
 
 
@@ -21,22 +23,29 @@ class DotButton(QWidget):
         self.setFocusPolicy(Qt.NoFocus)
         self.setToolTip("标记为完成")
         self._hovered = False
+        self._normal_color = QColor("#55555f")
+        self._accent_color = QColor("#5ea0ff")
         self.setMouseTracking(True)
+
+    def set_theme(self, theme: Theme):
+        self._normal_color = theme.icon_color
+        self._accent_color = theme.accent_color
+        self.update()
 
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         r = self.rect().adjusted(2, 2, -2, -2)
         if self._hovered:
-            p.setPen(QPen(QColor("#5ea0ff"), 1.8))
-            p.setBrush(QColor(94, 160, 255, 42))
+            p.setPen(QPen(self._accent_color, 1.8))
+            acc = self._accent_color
+            p.setBrush(QColor(acc.red(), acc.green(), acc.blue(), 42))
         else:
-            p.setPen(QPen(QColor("#55555f"), 1.5))
+            p.setPen(QPen(self._normal_color, 1.5))
             p.setBrush(Qt.NoBrush)
         p.drawEllipse(r)
         if self._hovered:
-            # 对勾预览:暗示点击即完成
-            pen = QPen(QColor("#5ea0ff"), 1.6)
+            pen = QPen(self._accent_color, 1.6)
             pen.setCapStyle(Qt.RoundCap)
             pen.setJoinStyle(Qt.RoundJoin)
             p.setPen(pen)
@@ -77,6 +86,11 @@ class TaskItem(QWidget):
         self._locked = False
         self._hovered = False
         self._fit_pending = False
+        self._sep_color = QColor(255, 255, 255, 8)
+        self._hover_color = QColor(255, 255, 255, 6)
+        self._text_color = QColor("#e9e9ef")
+        self._font_family = "Segoe UI Variable"
+        self._font_size = 13
         self.setMouseTracking(True)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
 
@@ -151,9 +165,9 @@ class TaskItem(QWidget):
         p.setRenderHint(QPainter.Antialiasing)
         if self._hovered and self.stack.currentIndex() == self._LABEL_PAGE:
             p.setPen(Qt.NoPen)
-            p.setBrush(QColor(255, 255, 255, 6))
+            p.setBrush(self._hover_color)
             p.drawRoundedRect(self.rect().adjusted(4, 1, -4, 0), 9, 9)
-        p.setPen(QColor(255, 255, 255, 8))
+        p.setPen(self._sep_color)
         p.drawLine(40, self.height() - 1, self.width() - 12, self.height() - 1)
         p.end()
 
@@ -166,6 +180,41 @@ class TaskItem(QWidget):
         self._hovered = False
         self.update()
         super().leaveEvent(event)
+
+    # ---- 主题 ----
+    def set_theme(self, theme: Theme):
+        self._sep_color = theme.sep_color
+        self._hover_color = theme.highlight_color
+        self._text_color = theme.text_color
+        self._font_family = theme.font_family
+        self._font_size = theme.font_size
+        self.dot.set_theme(theme)
+        fs = theme.font_size
+        ff = theme.font_family
+        tc = theme.text_color.name()
+        self.label.setStyleSheet(f"""
+    QLabel#taskText {{
+        background: transparent;
+        border: none;
+        color: {tc};
+        font-size: {fs}px;
+        font-family: "{ff}";
+        padding: 0px;
+    }}
+""")
+        acc = theme.accent_color
+        self.edit.setStyleSheet(f"""
+    QPlainTextEdit#taskEdit {{
+        background: rgba({theme.highlight_color.red()},{theme.highlight_color.green()},{theme.highlight_color.blue()},12);
+        border: 1px solid rgba({acc.red()}, {acc.green()}, {acc.blue()}, 140);
+        border-radius: 8px;
+        color: {tc};
+        font-size: {fs}px;
+        font-family: "{ff}";
+        padding: 5px 7px;
+    }}
+""")
+        self.update()
 
     # ---- 编辑 ----
     def start_edit(self):

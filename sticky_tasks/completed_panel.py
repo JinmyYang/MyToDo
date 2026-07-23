@@ -5,7 +5,9 @@ from PySide6.QtWidgets import (
     QMenu, QSizePolicy,
 )
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QCursor
+from PySide6.QtGui import QCursor, QColor
+
+from .app_settings import Theme
 
 PANEL_QSS = """
 CompletedPanel { background: transparent; }
@@ -42,6 +44,50 @@ QWidget#bodyContainer { background: transparent; }
 QScrollBar:vertical { background: transparent; width: 5px; margin: 2px; }
 QScrollBar::handle:vertical { background: rgba(255,255,255,36); border-radius: 2px; min-height: 20px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+"""
+
+
+def build_panel_qss(t: Theme) -> str:
+    """根据主题生成已完成面板 QSS。"""
+    hl = t.highlight_color
+    ico = t.icon_color
+    acc = t.accent_color
+    sb = t.scrollbar_color
+    return f"""
+CompletedPanel {{ background: transparent; }}
+QFrame#completedItem {{
+    background: rgba({hl.red()}, {hl.green()}, {hl.blue()}, {max(hl.alpha() - 3, 2)});
+    border-radius: 9px;
+    margin: 1px 10px;
+}}
+QFrame#completedItem:hover {{
+    background: rgba({hl.red()}, {hl.green()}, {hl.blue()}, {hl.alpha() + 3});
+}}
+QLabel#doneText {{ color: rgba({ico.red()},{ico.green()},{ico.blue()},180); font-size: 12px; }}
+QLabel#doneTextDone {{
+    color: rgba({ico.red()},{ico.green()},{ico.blue()},200);
+    font-size: 12px;
+    text-decoration: line-through;
+}}
+QPushButton#restoreBtn {{
+    color: rgba({ico.red()},{ico.green()},{ico.blue()},200);
+    background: transparent;
+    border: 1px solid rgba({ico.red()},{ico.green()},{ico.blue()},40);
+    border-radius: 7px;
+    padding: 1px 4px;
+    font-size: 12px;
+}}
+QPushButton#restoreBtn:hover {{
+    color: #ffffff;
+    background: rgba({acc.red()}, {acc.green()}, {acc.blue()}, 90);
+    border-color: rgba({acc.red()}, {acc.green()}, {acc.blue()}, 150);
+}}
+QScrollArea {{ border: none; background: transparent; }}
+QScrollArea viewport {{ background: transparent; }}
+QWidget#bodyContainer {{ background: transparent; }}
+QScrollBar:vertical {{ background: transparent; width: 5px; margin: 2px; }}
+QScrollBar::handle:vertical {{ background: rgba({sb.red()},{sb.green()},{sb.blue()},{sb.alpha()}); border-radius: 2px; min-height: 20px; }}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 """
 
 
@@ -106,6 +152,9 @@ class CompletedPanel(QWidget):
         self.body.addStretch()  # 末尾占位,任务顶对齐
         self.scroll.setWidget(self.body_container)
         v.addWidget(self.scroll, 1)
+
+    def set_theme(self, theme: Theme):
+        self.setStyleSheet(build_panel_qss(theme))
 
     def set_tasks(self, tasks):
         # 清空旧行(保留末尾 stretch)

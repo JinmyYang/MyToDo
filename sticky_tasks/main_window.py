@@ -1,5 +1,8 @@
 """主窗口:半透明、无边框、置顶的桌面便签。"""
 
+import math
+from pathlib import Path
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QScrollArea, QFrame,
     QApplication, QMenu, QGraphicsOpacityEffect,
@@ -14,30 +17,49 @@ from PySide6.QtGui import (
 from .task_store import TaskStore
 from .task_item import TaskItem
 from .completed_panel import CompletedPanel
+from .app_settings import AppSettings, Theme
+from .settings_dialog import SettingsDialog
 
-QSS = """
-QFrame#container {
+def build_qss(t: Theme) -> str:
+    """根据主题动态生成 QSS。"""
+    bg = t.bg_color
+    # 背景渐变:顶部稍亮,底部稍暗
+    top = QColor(min(bg.red() + 12, 255), min(bg.green() + 12, 255), min(bg.blue() + 12, 255))
+    bot = QColor(max(bg.red() - 10, 0), max(bg.green() - 10, 0), max(bg.blue() - 10, 0))
+    op = t.bg_opacity
+    sep = t.sep_color
+    sb = t.scrollbar_color
+    sbh = t.scrollbar_hover_color
+    txt = t.text_color
+    ico = t.icon_color
+    ico_h = t.icon_hover_color
+    hl = t.highlight_color
+    acc = t.accent_color
+
+    return f"""
+QFrame#container {{
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-        stop:0 rgba(37, 38, 44, 240),
-        stop:1 rgba(24, 25, 29, 246));
+        stop:0 rgba({top.red()}, {top.green()}, {top.blue()}, {op}),
+        stop:1 rgba({bot.red()}, {bot.green()}, {bot.blue()}, {min(op + 6, 255)}));
     border: none;
     border-radius: 8px;
-}
-QFrame#sectionSep {
-    background: rgba(255, 255, 255, 10);
+}}
+QFrame#sectionSep {{
+    background: rgba({sep.red()}, {sep.green()}, {sep.blue()}, {sep.alpha()});
     border: none;
     max-height: 1px;
-}
-QLabel { color: #eaeaf0; font-size: 13px; }
-QLabel#titleLabel {
-    color: #9a9aa5;
+}}
+QLabel {{ color: {txt.name()}; font-size: {t.font_size}px; font-family: "{t.font_family}"; }}
+QLabel#titleLabel {{
+    color: {t.fixed_title_color.name()};
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 2.5px;
-}
-QPushButton { color: #eaeaf0; background: transparent; border: none; }
-QPushButton#inlineAddBtn {
-    color: #5c5c66;
+    font-family: "Segoe UI Variable";
+}}
+QPushButton {{ color: {txt.name()}; background: transparent; border: none; }}
+QPushButton#inlineAddBtn {{
+    color: rgba({ico.red()}, {ico.green()}, {ico.blue()}, 160);
     background: transparent;
     border: none;
     border-radius: 9px;
@@ -45,30 +67,43 @@ QPushButton#inlineAddBtn {
     font-weight: 400;
     text-align: left;
     padding: 5px 0 5px 16px;
-}
-QPushButton#inlineAddBtn:hover {
-    color: #5ea0ff;
-    background: rgba(255, 255, 255, 7);
-}
-QPushButton#footerBtn {
-    color: #8a8a94;
+}}
+QPushButton#inlineAddBtn:hover {{
+    color: {acc.name()};
+    background: rgba({hl.red()}, {hl.green()}, {hl.blue()}, {hl.alpha()});
+}}
+QPushButton#footerBtn {{
+    color: {t.fixed_footer_color.name()};
     font-family: "Microsoft YaHei UI";
     text-align: left;
-    border-top: 1px solid rgba(255, 255, 255, 10);
-    padding: 9px 14px 10px;
+    border: none;
+    padding: 9px 0 10px 14px;
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 1px;
-}
-QPushButton#footerBtn:hover { color: #d0d0d8; background: rgba(255, 255, 255, 6); }
-QScrollArea#listScroll { border: none; background: transparent; }
-QScrollArea#listScroll viewport { background: transparent; }
-QWidget#listWidget { background: transparent; }
-QScrollBar:vertical { background: transparent; width: 5px; margin: 6px 3px 6px 0; }
-QScrollBar::handle:vertical { background: rgba(255,255,255,36); border-radius: 2px; min-height: 24px; }
-QScrollBar::handle:vertical:hover { background: rgba(255,255,255,58); }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
+}}
+QPushButton#footerBtn:hover {{ color: #d0d0d8; }}
+QPushButton#settingsBtn {{
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 4px;
+}}
+QPushButton#settingsBtn:hover {{
+    background: rgba({hl.red()}, {hl.green()}, {hl.blue()}, {hl.alpha() + 4});
+}}
+QFrame#footerBar {{
+    border-top: 1px solid rgba({sep.red()}, {sep.green()}, {sep.blue()}, {sep.alpha()});
+    background: transparent;
+}}
+QScrollArea#listScroll {{ border: none; background: transparent; }}
+QScrollArea#listScroll viewport {{ background: transparent; }}
+QWidget#listWidget {{ background: transparent; }}
+QScrollBar:vertical {{ background: transparent; width: 5px; margin: 6px 3px 6px 0; }}
+QScrollBar::handle:vertical {{ background: rgba({sb.red()},{sb.green()},{sb.blue()},{sb.alpha()}); border-radius: 2px; min-height: 24px; }}
+QScrollBar::handle:vertical:hover {{ background: rgba({sbh.red()},{sbh.green()},{sbh.blue()},{sbh.alpha()}); }}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
 """
 
 EDGE = 16           # 边 resize 检测宽度(覆盖到可见深色块最外沿,加宽便于命中)
@@ -85,7 +120,12 @@ class LockButton(QWidget):
     def __init__(self, locked=False, parent=None):
         super().__init__(parent)
         self._locked = locked
+        self._color = QColor("#8e9099")
         self._sync_tooltip()
+
+    def set_theme(self, theme: Theme):
+        self._color = theme.icon_color
+        self.update()
 
     def set_locked(self, locked):
         self._locked = locked
@@ -99,8 +139,7 @@ class LockButton(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         locked = self._locked
-        # 锁上/未锁用同一种安静的灰,不靠亮度变化抢眼;状态差异由锁梁位置表达。
-        color = QColor("#8e9099")
+        color = self._color
         pen = QPen(color, 1.7)
         pen.setCapStyle(Qt.RoundCap)
         pen.setJoinStyle(Qt.RoundJoin)
@@ -165,9 +204,12 @@ class HeaderBar(QFrame):
 
 
 class MainWindow(QWidget):
-    def __init__(self, store: TaskStore):
+    def __init__(self, store: TaskStore, settings_path: Path = None):
         super().__init__()
         self.store = store
+        self._settings_path = settings_path or (Path.home() / ".sticky_tasks" / "settings.json")
+        self.settings = AppSettings.load(self._settings_path)
+        self.theme = self.settings.to_theme()
         self._drag_pos = None
         self._active_items = {}  # task_id -> TaskItem
         self._locked = False
@@ -180,7 +222,7 @@ class MainWindow(QWidget):
         self._cursor_overriding = False  # 是否已压入应用级 resize 光标
 
         self.setWindowTitle("桌面便签")
-        self.setFont(QFont("Segoe UI Variable", 10))
+        self.setFont(QFont(self.theme.font_family, 10))
         # 普通窗口层级(不再置顶),仅无边框
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -193,7 +235,7 @@ class MainWindow(QWidget):
 
         self.container = QFrame()
         self.container.setObjectName("container")
-        self.container.setStyleSheet(QSS)
+        self.container.setStyleSheet(build_qss(self.theme))
         # 容器内固定箭头光标,避免被窗口边缘的 resize 光标继承
         self.container.setCursor(QCursor(Qt.ArrowCursor))
         outer.addWidget(self.container)
@@ -239,7 +281,13 @@ class MainWindow(QWidget):
         self.scroll.setWidget(self.list_widget)
         v.addWidget(self.scroll, 1)
 
-        # ---- 底部:已完成按钮(触发面板向下展开,chevron 图标表示展开/收起)----
+        # ---- 底部:已完成按钮 + 设置齿轮(最右) ----
+        self.footer_bar = QFrame()
+        self.footer_bar.setObjectName("footerBar")
+        footer_layout = QHBoxLayout(self.footer_bar)
+        footer_layout.setContentsMargins(0, 0, 6, 0)
+        footer_layout.setSpacing(0)
+
         self.footer_btn = QPushButton("已完成 (0)")
         self.footer_btn.setObjectName("footerBtn")
         self.footer_btn.setCursor(QCursor(Qt.PointingHandCursor))
@@ -247,10 +295,24 @@ class MainWindow(QWidget):
         self.footer_btn.setIconSize(QSize(14, 14))
         self.footer_btn.setIcon(QIcon(self._chevron_pixmap("right")))
         self.footer_btn.clicked.connect(self.toggle_completed)
-        v.addWidget(self.footer_btn)
+        footer_layout.addWidget(self.footer_btn, 1)
+
+        self.settings_btn = QPushButton()
+        self.settings_btn.setObjectName("settingsBtn")
+        self.settings_btn.setFixedSize(28, 28)
+        self.settings_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self.settings_btn.setFocusPolicy(Qt.NoFocus)
+        self.settings_btn.setToolTip("外观设置")
+        self.settings_btn.setIcon(QIcon(self._gear_pixmap()))
+        self.settings_btn.setIconSize(QSize(16, 16))
+        self.settings_btn.clicked.connect(self.open_settings)
+        footer_layout.addWidget(self.settings_btn)
+
+        v.addWidget(self.footer_bar)
 
         # ---- 已完成面板(在 footer 下方,默认隐藏)----
         self.completed_panel = CompletedPanel()
+        self.completed_panel.set_theme(self.theme)
         self.completed_panel.restored.connect(self.on_restore)
         self.completed_panel.deleted.connect(self.on_delete)
         self.completed_panel.setVisible(False)
@@ -275,16 +337,16 @@ class MainWindow(QWidget):
 
     def eventFilter(self, obj, event):
         et = event.type()
-        # footer 图标颜色随字体:通常灰(#6e6e78),hover 提亮(#c8c8d2)
+        # footer 图标颜色随主题:hover 提亮
         if obj is self.footer_btn and not self._locked:
             if et == QEvent.Enter:
                 self.footer_btn.setIcon(
-                    QIcon(self._chevron_pixmap(self._chevron_dir(), color=QColor("#c8c8d2"))))
-                return False  # 不拦截,让默认 hover 样式继续生效
+                    QIcon(self._chevron_pixmap(self._chevron_dir(), color=self.theme.icon_hover_color)))
+                return False
             elif et == QEvent.Leave:
                 self.footer_btn.setIcon(
-                    QIcon(self._chevron_pixmap(self._chevron_dir(), color=QColor("#6e6e78"))))
-                return False  # 不拦截,让默认 hover 样式继续生效
+                    QIcon(self._chevron_pixmap(self._chevron_dir(), color=self.theme.icon_color)))
+                return False
         if et == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
             pos = self.mapFromGlobal(event.globalPosition().toPoint())
             direction = self._edge(pos)
@@ -328,6 +390,7 @@ class MainWindow(QWidget):
         radius = 8.0
         fade = 7.0       # 虚化区域宽度(略小于 8px 外边距)
         layers = 14
+        base = self.theme.edge_fade_color
         p.setPen(Qt.NoPen)
         for i in range(layers, 0, -1):
             expand = fade * i / layers
@@ -335,7 +398,7 @@ class MainWindow(QWidget):
             alpha = int(56 * (1.0 - (i - 1) / layers))
             rect = cr.adjusted(-expand, -expand, expand, expand)
             r = radius + expand
-            p.setBrush(QColor(30, 31, 36, alpha))
+            p.setBrush(QColor(base.red(), base.green(), base.blue(), alpha))
             p.drawRoundedRect(rect, r, r)
 
     # ---- 加载 ----
@@ -347,6 +410,7 @@ class MainWindow(QWidget):
 
     def _add_item_widget(self, task, focus=True):
         item = TaskItem(task)
+        item.set_theme(self.theme)
         item.completed.connect(self.on_complete)
         item.text_changed.connect(self.on_text_changed)
         item.delete_requested.connect(self.on_delete)
@@ -442,8 +506,10 @@ class MainWindow(QWidget):
     def _chevron_dir(self):
         return "down" if self._completed_expanded else "right"
 
-    def _chevron_pixmap(self, direction, size=14, color=QColor("#6e6e78")):
+    def _chevron_pixmap(self, direction, size=14, color=None):
         """用 QPainter 画矢量 chevron:浮点坐标严格对称 + 按设备像素比(DPR)高清渲染,不糊。"""
+        if color is None:
+            color = self.theme.icon_color
         try:
             dpr = QApplication.primaryScreen().devicePixelRatio() or 1.0
         except Exception:
@@ -472,6 +538,71 @@ class MainWindow(QWidget):
         p.end()
         return pm
 
+    def _gear_pixmap(self, size=16, color=None):
+        """画矢量齿轮图标。"""
+        if color is None:
+            color = self.theme.icon_color
+        try:
+            dpr = QApplication.primaryScreen().devicePixelRatio() or 1.0
+        except Exception:
+            dpr = 1.0
+        pm = QPixmap(int(size * dpr), int(size * dpr))
+        pm.setDevicePixelRatio(dpr)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(color, 1.5)
+        pen.setCapStyle(Qt.RoundCap)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        cx = cy = size / 2.0
+        # 外圈
+        p.drawEllipse(QPointF(cx, cy), size * 0.28, size * 0.28)
+        # 内圈
+        p.drawEllipse(QPointF(cx, cy), size * 0.12, size * 0.12)
+        # 齿:6 条短线从外圈向外辐射
+        for i in range(6):
+            angle = math.radians(i * 60)
+            x1 = cx + math.cos(angle) * size * 0.30
+            y1 = cy + math.sin(angle) * size * 0.30
+            x2 = cx + math.cos(angle) * size * 0.44
+            y2 = cy + math.sin(angle) * size * 0.44
+            p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+        p.end()
+        return pm
+
+    # ---- 设置 ----
+    def open_settings(self):
+        dlg = SettingsDialog(self.settings, parent=self)
+        dlg.applied.connect(self._on_settings_applied)
+        dlg.exec()
+
+    def _on_settings_applied(self):
+        self.settings.save(self._settings_path)
+        self.apply_theme()
+
+    def apply_theme(self):
+        """重新从 settings 生成主题并刷新所有 UI。"""
+        self.theme = self.settings.to_theme()
+        t = self.theme
+        # 容器 QSS
+        self.container.setStyleSheet(build_qss(t))
+        # 全局字体
+        self.setFont(QFont(t.font_family, 10))
+        # 锁头
+        self.header.lock_btn.set_theme(t)
+        # 齿轮图标
+        self.settings_btn.setIcon(QIcon(self._gear_pixmap()))
+        # chevron
+        self._update_footer()
+        # 任务项
+        for item in self._active_items.values():
+            item.set_theme(t)
+        # 已完成面板
+        self.completed_panel.set_theme(t)
+        # 边缘虚化重画
+        self.update()
+
     # ---- 锁定/解锁 ----
     def set_locked(self, locked):
         self._locked = locked
@@ -479,7 +610,7 @@ class MainWindow(QWidget):
         self.header.lock_btn.set_locked(locked)
         self.header.lock_btn.setVisible(True)
         self._inline_add_btn.setVisible(not locked)
-        self.footer_btn.setVisible(not locked)
+        self.footer_bar.setVisible(not locked)
         if locked and self._completed_expanded:
             self.toggle_completed()  # 锁定时收起已完成面板
         for item in list(self._active_items.values()):
