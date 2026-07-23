@@ -18,7 +18,7 @@ from .task_store import TaskStore
 from .task_item import TaskItem
 from .completed_panel import CompletedPanel
 from .app_settings import AppSettings, Theme
-from .settings_dialog import SettingsDialog
+from .settings_dialog import SettingsWindow
 
 def build_qss(t: Theme) -> str:
     """根据主题动态生成 QSS。"""
@@ -573,11 +573,19 @@ class MainWindow(QWidget):
 
     # ---- 设置 ----
     def open_settings(self):
-        dlg = SettingsDialog(self.settings, parent=self)
-        dlg.applied.connect(self._on_settings_applied)
-        dlg.exec()
+        # 已打开则置顶,不重复创建
+        if hasattr(self, "_settings_win") and self._settings_win is not None:
+            self._settings_win.raise_()
+            self._settings_win.activateWindow()
+            return
+        win = SettingsWindow(self.settings, parent=None)
+        win.changed.connect(self._on_settings_changed)
+        win.destroyed.connect(lambda: setattr(self, "_settings_win", None))
+        self._settings_win = win
+        win.show()
 
-    def _on_settings_applied(self):
+    def _on_settings_changed(self):
+        """设置窗口任何变动 → 实时刷新 + 持久化。"""
         self.settings.save(self._settings_path)
         self.apply_theme()
 
