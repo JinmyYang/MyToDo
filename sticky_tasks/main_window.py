@@ -51,13 +51,14 @@ QPushButton#inlineAddBtn:hover {
     background: rgba(255, 255, 255, 7);
 }
 QPushButton#footerBtn {
-    color: #7c7c86;
+    color: #8a8a94;
+    font-family: "Microsoft YaHei UI";
     text-align: left;
     border-top: 1px solid rgba(255, 255, 255, 10);
     padding: 9px 14px 10px;
     font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.3px;
+    font-weight: 600;
+    letter-spacing: 1px;
 }
 QPushButton#footerBtn:hover { color: #d0d0d8; background: rgba(255, 255, 255, 6); }
 QScrollArea#listScroll { border: none; background: transparent; }
