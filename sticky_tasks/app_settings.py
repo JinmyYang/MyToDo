@@ -104,6 +104,8 @@ class AppSettings:
     window_y: int | None = None
     window_width: int | None = None
     window_height: int | None = None
+    custom_colors: list[str] = field(default_factory=list)
+    custom_preset: dict | None = None
 
     def to_theme(self) -> Theme:
         return Theme(
@@ -140,6 +142,31 @@ class AppSettings:
         for key in ("window_x", "window_y", "window_width", "window_height"):
             if key in data and type(data[key]) is int:
                 setattr(s, key, data[key])
+        if isinstance(data.get("custom_colors"), list):
+            s.custom_colors = [
+                color for color in data["custom_colors"]
+                if isinstance(color, str) and QColor(color).isValid()
+            ][:16]
+        preset = data.get("custom_preset")
+        required = {"bg", "text", "font", "size", "opacity"}
+        if isinstance(preset, dict) and required.issubset(preset):
+            if (
+                isinstance(preset["bg"], str)
+                and isinstance(preset["text"], str)
+                and QColor(preset["bg"]).isValid()
+                and QColor(preset["text"]).isValid()
+                and isinstance(preset["font"], str)
+                and type(preset["size"]) is int
+                and type(preset["opacity"]) is int
+            ):
+                s.custom_preset = {
+                    "name": "自定义",
+                    "bg": QColor(preset["bg"]).name(),
+                    "text": QColor(preset["text"]).name(),
+                    "font": preset["font"],
+                    "size": max(9, min(24, preset["size"])),
+                    "opacity": max(60, min(255, preset["opacity"])),
+                }
         # 校验颜色合法性
         if not QColor(s.bg_color).isValid():
             s.bg_color = "#25262c"

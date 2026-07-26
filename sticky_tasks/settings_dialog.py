@@ -6,10 +6,10 @@
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QColorDialog, QFontComboBox, QSlider, QSpinBox,
+    QColorDialog, QComboBox, QSlider, QSpinBox, QCompleter,
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QFont, QCursor
+from PySide6.QtGui import QColor, QCursor, QFontDatabase
 
 from .app_settings import AppSettings
 
@@ -62,7 +62,7 @@ QSpinBox {
     font-size: 12px;
 }
 QSpinBox::up-button, QSpinBox::down-button { width: 16px; }
-QFontComboBox {
+QComboBox {
     background: rgba(255,255,255,8);
     border: 1px solid rgba(255,255,255,20);
     border-radius: 6px;
@@ -70,7 +70,7 @@ QFontComboBox {
     min-height: 28px;
     padding: 2px 8px;
 }
-QFontComboBox QAbstractItemView {
+QComboBox QAbstractItemView {
     background: #282930;
     border: 1px solid rgba(255,255,255,20);
     color: #e0e0e8;
@@ -93,6 +93,7 @@ class SettingsWindow(QWidget):
     """外观设置独立窗口(非模态,实时预览)。"""
 
     changed = Signal()  # 任何设置变动时发出,主窗口据此实时刷新
+    history_requested = Signal()
 
     def __init__(self, settings: AppSettings, parent=None):
         super().__init__(parent)
@@ -135,6 +136,12 @@ class SettingsWindow(QWidget):
             )
             btn.clicked.connect(lambda checked=False, preset=p: self._apply_preset(preset))
             preset_row.addWidget(btn)
+        self._custom_preset_btn = QPushButton("自")
+        self._custom_preset_btn.setFixedSize(28, 28)
+        self._custom_preset_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self._custom_preset_btn.clicked.connect(self._apply_custom_preset)
+        preset_row.addWidget(self._custom_preset_btn)
+        self._refresh_custom_preset_button()
         preset_row.addStretch()
         root.addLayout(preset_row)
 
@@ -158,9 +165,21 @@ class SettingsWindow(QWidget):
 
         # ---- 字体 ----
         root.addWidget(self._row_label("字体"))
-        self._font_combo = QFontComboBox()
-        self._font_combo.setCurrentFont(QFont(self._settings.font_family))
-        self._font_combo.currentFontChanged.connect(self._on_font_changed)
+        self._font_families = sorted(QFontDatabase.families(), key=str.casefold)
+        self._font_combo = QComboBox()
+        self._font_combo.setEditable(True)
+        self._font_combo.setInsertPolicy(QComboBox.NoInsert)
+        self._font_combo.addItems(self._font_families)
+        self._font_combo.setCurrentText(self._settings.font_family)
+        self._font_combo.lineEdit().setPlaceholderText("搜索字体")
+        completer = QCompleter(self._font_families, self._font_combo)
+        completer.setCaseSensitivity(Qt.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchContains)
+        completer.setCompletionMode(QCompleter.PopupCompletion)
+        completer.activated[str].connect(self._on_font_activated)
+        self._font_combo.setCompleter(completer)
+        self._font_combo.textActivated.connect(self._on_font_activated)
+        self._font_combo.lineEdit().editingFinished.connect(self._commit_font_text)
         root.addWidget(self._font_combo)
 
         # ---- 字号 ----
@@ -188,16 +207,29 @@ class SettingsWindow(QWidget):
         op_row.addWidget(self._op_label)
         root.addLayout(op_row)
 
-        # ---- 恢复默认 ----
+        # ---- 操作 ----
         root.addSpacing(8)
         btn_row = QHBoxLayout()
-        btn_row.addStretch()
+        history_btn = QPushButton("查看历史任务")
+        history_btn.setObjectName("actionBtn")
+        history_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        history_btn.clicked.connect(self.history_requested)
+        btn_row.addWidget(history_btn)
+        save_preset_btn = QPushButton("保存为自定义预设")
+        save_preset_btn.setObjectName("actionBtn")
+        save_preset_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        save_preset_btn.clicked.connect(self._save_custom_preset)
+        btn_row.addWidget(save_preset_btn)
+        root.addLayout(btn_row)
+
+        reset_row = QHBoxLayout()
+        reset_row.addStretch()
         reset_btn = QPushButton("恢复默认")
         reset_btn.setObjectName("actionBtn")
         reset_btn.setCursor(QCursor(Qt.PointingHandCursor))
         reset_btn.clicked.connect(self._reset)
-        btn_row.addWidget(reset_btn)
-        root.addLayout(btn_row)
+        reset_row.addWidget(reset_btn)
+        root.addLayout(reset_row)
 
     # ---- 工具 ----
     def _row_label(self, text):
@@ -227,30 +259,50 @@ class SettingsWindow(QWidget):
         """将当前 UI 状态写回 settings 并通知主窗口刷新。"""
         self._settings.bg_color = self._bg_color.name()
         self._settings.text_color = self._txt_color.name()
-        self._settings.font_family = self._font_combo.currentFont().family()
+        if self._font_combo.currentText() in self._font_families:
+            self._settings.font_family = self._font_combo.currentText()
         self._settings.font_size = self._size_spin.value()
         self._settings.bg_opacity = self._op_slider.value()
         self.changed.emit()
 
     # ---- 槽 ----
     def _pick_bg_color(self):
-        color = QColorDialog.getColor(
-            QColor(self._settings.bg_color), self, "选择背景颜色")
+        color = self._show_color_dialog(
+            QColor(self._settings.bg_color), "选择背景颜色",
+        )
         if color.isValid():
             self._bg_color = color
             self._paint_color_btn(self._bg_btn, color)
             self._emit_changed()
+        else:
+            self.changed.emit()
 
     def _pick_text_color(self):
-        color = QColorDialog.getColor(
-            QColor(self._settings.text_color), self, "选择字体颜色")
+        color = self._show_color_dialog(
+            QColor(self._settings.text_color), "选择字体颜色",
+        )
         if color.isValid():
             self._txt_color = color
             self._paint_color_btn(self._txt_btn, color)
             self._emit_changed()
+        else:
+            self.changed.emit()
 
-    def _on_font_changed(self, font):
-        self._emit_changed()
+    def _on_font_activated(self, family):
+        if family in self._font_families:
+            self._settings.font_family = family
+            self.changed.emit()
+
+    def _commit_font_text(self):
+        family = self._font_combo.currentText().strip()
+        match = next(
+            (name for name in self._font_families if name.casefold() == family.casefold()),
+            None,
+        )
+        self._font_combo.setCurrentText(match or self._settings.font_family)
+        if match:
+            self._settings.font_family = match
+            self.changed.emit()
 
     def _on_size_changed(self, val):
         self._emit_changed()
@@ -268,7 +320,7 @@ class SettingsWindow(QWidget):
         self._font_combo.blockSignals(True)
         self._size_spin.blockSignals(True)
         self._op_slider.blockSignals(True)
-        self._font_combo.setCurrentFont(QFont(preset["font"]))
+        self._font_combo.setCurrentText(preset["font"])
         self._size_spin.setValue(preset["size"])
         self._op_slider.setValue(preset["opacity"])
         self._font_combo.blockSignals(False)
@@ -276,6 +328,58 @@ class SettingsWindow(QWidget):
         self._op_slider.blockSignals(False)
         self._op_label.setText(f"{int(preset['opacity'] / 255 * 100)}%")
         self._emit_changed()
+
+    def _save_custom_preset(self):
+        self._settings.custom_preset = {
+            "name": "自定义",
+            "bg": self._settings.bg_color,
+            "text": self._settings.text_color,
+            "font": self._settings.font_family,
+            "size": self._settings.font_size,
+            "opacity": self._settings.bg_opacity,
+        }
+        self._refresh_custom_preset_button()
+        self.changed.emit()
+
+    def _apply_custom_preset(self):
+        if self._settings.custom_preset is not None:
+            self._apply_preset(self._settings.custom_preset)
+
+    def _refresh_custom_preset_button(self):
+        preset = self._settings.custom_preset
+        color = preset["bg"] if preset is not None else "#34353d"
+        self._custom_preset_btn.setToolTip(
+            "自定义预设" if preset is not None else "尚未保存自定义预设"
+        )
+        self._custom_preset_btn.setEnabled(preset is not None)
+        self._custom_preset_btn.setStyleSheet(
+            "QPushButton {"
+            f"background: {color}; color: #ffffff;"
+            "border: 2px solid rgba(255,255,255,40); border-radius: 14px;"
+            "font-size: 11px; font-weight: 600; }"
+            "QPushButton:hover { border-color: #5ea0ff; }"
+        )
+
+    def _restore_custom_colors(self):
+        for index, color in enumerate(self._settings.custom_colors):
+            if index < QColorDialog.customCount():
+                QColorDialog.setCustomColor(index, QColor(color))
+
+    def _show_color_dialog(self, initial, title):
+        self._restore_custom_colors()
+        dialog = QColorDialog(initial, self)
+        dialog.setWindowTitle(title)
+        dialog.setOption(QColorDialog.DontUseNativeDialog, True)
+        accepted = dialog.exec()
+        self._remember_custom_colors()
+        return dialog.selectedColor() if accepted else QColor()
+
+    def _remember_custom_colors(self):
+        self._settings.custom_colors = [
+            QColorDialog.customColor(index).name()
+            for index in range(QColorDialog.customCount())
+            if QColorDialog.customColor(index).isValid()
+        ]
 
     def _reset(self):
         defaults = AppSettings()
@@ -286,7 +390,7 @@ class SettingsWindow(QWidget):
         self._font_combo.blockSignals(True)
         self._size_spin.blockSignals(True)
         self._op_slider.blockSignals(True)
-        self._font_combo.setCurrentFont(QFont(defaults.font_family))
+        self._font_combo.setCurrentText(defaults.font_family)
         self._size_spin.setValue(defaults.font_size)
         self._op_slider.setValue(defaults.bg_opacity)
         self._font_combo.blockSignals(False)

@@ -19,12 +19,15 @@ class Task:
 
     def __init__(
         self, id, text, completed=False, created_at=None, completed_at=None,
+        deleted=False, deleted_at=None,
     ):
         self.id = id
         self.text = text
         self.completed = completed
         self.created_at = created_at or datetime.now().isoformat()
         self.completed_at = completed_at
+        self.deleted = deleted
+        self.deleted_at = deleted_at
 
     def to_dict(self):
         return {
@@ -33,6 +36,8 @@ class Task:
             "completed": self.completed,
             "created_at": self.created_at,
             "completed_at": self.completed_at,
+            "deleted": self.deleted,
+            "deleted_at": self.deleted_at,
         }
 
     @classmethod
@@ -43,6 +48,8 @@ class Task:
             completed=d.get("completed", False),
             created_at=d.get("created_at"),
             completed_at=d.get("completed_at"),
+            deleted=d.get("deleted", False),
+            deleted_at=d.get("deleted_at"),
         )
 
 
@@ -110,13 +117,22 @@ class TaskStore:
         return None
 
     def active_tasks(self):
-        return [t for t in self.tasks if not t.completed]
+        return [t for t in self.tasks if not t.completed and not t.deleted]
 
     def completed_tasks(self):
-        tasks = [t for t in self.tasks if t.completed]
+        tasks = [t for t in self.tasks if t.completed and not t.deleted]
         return sorted(
             tasks,
             key=lambda t: t.completed_at or t.created_at or "",
+            reverse=True,
+        )
+
+    def history_tasks(self):
+        """返回已完成或已删除任务，最近发生变更的排在前面。"""
+        tasks = [t for t in self.tasks if t.completed or t.deleted]
+        return sorted(
+            tasks,
+            key=lambda t: t.deleted_at or t.completed_at or t.created_at or "",
             reverse=True,
         )
 
@@ -138,6 +154,8 @@ class TaskStore:
         if t is not None:
             t.completed = True
             t.completed_at = datetime.now().isoformat()
+            t.deleted = False
+            t.deleted_at = None
             self.save()
         return t
 
@@ -146,21 +164,38 @@ class TaskStore:
         if t is not None:
             t.completed = False
             t.completed_at = None
+            t.deleted = False
+            t.deleted_at = None
             self.save()
         return t
 
     def delete(self, task_id):
-        for index, task in enumerate(self.tasks):
-            if task.id == task_id:
-                self.tasks.pop(index)
-                self.save()
-                return task, index
-        return None
-
-    def reinstate(self, task, index):
-        """把刚删除的任务放回原位置，供 UI 的短暂撤销使用。"""
-        if self.get(task.id) is not None:
-            return task
-        self.tasks.insert(max(0, min(index, len(self.tasks))), task)
-        self.save()
+        """把任务移入历史记录，不立即永久删除。"""
+        task = self.get(task_id)
+        if task is not None:
+            task.deleted = True
+            task.deleted_at = datetime.now().isoformat()
+            self.save()
         return task
+
+    def restore_many(self, task_ids):
+        ids = set(task_ids)
+        restored = []
+        for task in self.tasks:
+            if task.id in ids and (task.completed or task.deleted):
+                task.completed = False
+                task.completed_at = None
+                task.deleted = False
+                task.deleted_at = None
+                restored.append(task)
+        if restored:
+            self.save()
+        return restored
+
+    def permanent_delete(self, task_ids):
+        ids = set(task_ids)
+        removed = [task for task in self.tasks if task.id in ids]
+        if removed:
+            self.tasks = [task for task in self.tasks if task.id not in ids]
+            self.save()
+        return removed

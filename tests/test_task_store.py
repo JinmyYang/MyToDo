@@ -73,19 +73,50 @@ def test_delete(tmp_path):
     store = TaskStore(tmp_path / "tasks.json")
     t = store.add("任务")
     store.delete(t.id)
-    assert store.get(t.id) is None
+    assert store.get(t.id) is t
+    assert t.deleted is True
     assert store.active_tasks() == []
+    assert store.history_tasks() == [t]
 
 
-def test_deleted_task_can_be_reinstated_at_original_position(tmp_path):
+def test_deleted_task_can_be_restored_from_history(tmp_path):
     store = TaskStore(tmp_path / "tasks.json")
     first = store.add("第一")
     second = store.add("第二")
 
-    task, index = store.delete(first.id)
-    store.reinstate(task, index)
+    store.delete(first.id)
+    restored = store.restore_many([first.id])
 
+    assert restored == [first]
     assert [item.id for item in store.tasks] == [first.id, second.id]
+    assert [item.id for item in store.active_tasks()] == [first.id, second.id]
+
+
+def test_history_can_be_permanently_deleted_in_batch(tmp_path):
+    store = TaskStore(tmp_path / "tasks.json")
+    completed = store.add("已完成")
+    deleted = store.add("已删除")
+    active = store.add("保留")
+    store.complete(completed.id)
+    store.delete(deleted.id)
+
+    removed = store.permanent_delete([completed.id, deleted.id])
+
+    assert {task.id for task in removed} == {completed.id, deleted.id}
+    assert store.tasks == [active]
+
+
+def test_deleted_state_persists_roundtrip(tmp_path):
+    path = tmp_path / "tasks.json"
+    store = TaskStore(path)
+    task = store.add("历史任务")
+    store.delete(task.id)
+
+    reloaded = TaskStore(path)
+    loaded = reloaded.get(task.id)
+    assert loaded.deleted is True
+    assert loaded.deleted_at is not None
+    assert reloaded.history_tasks() == [loaded]
 
 
 def test_persistence_roundtrip(tmp_path):

@@ -21,6 +21,7 @@ from .task_item import TaskItem
 from .completed_panel import CompletedPanel
 from .app_settings import AppSettings, Theme
 from .settings_dialog import SettingsWindow
+from .history_window import HistoryWindow
 
 def build_qss(t: Theme) -> str:
     """根据主题动态生成 QSS。"""
@@ -97,21 +98,6 @@ QPushButton#settingsBtn:hover {{
 QFrame#footerBar {{
     border-top: 1px solid rgba({sep.red()}, {sep.green()}, {sep.blue()}, {sep.alpha()});
     background: transparent;
-}}
-QFrame#undoBar {{
-    border-top: 1px solid rgba({sep.red()}, {sep.green()}, {sep.blue()}, {sep.alpha()});
-    background: transparent;
-}}
-QLabel#undoLabel {{ color: {txt.name()}; font-size: 11px; }}
-QPushButton#undoBtn {{
-    color: {acc.name()};
-    padding: 5px 12px;
-    font-size: 11px;
-    font-weight: 600;
-}}
-QPushButton#undoBtn:hover {{
-    background: rgba({hl.red()}, {hl.green()}, {hl.blue()}, {hl.alpha() + 4});
-    border-radius: 6px;
 }}
 QScrollArea#listScroll {{ border: none; background: transparent; }}
 QScrollArea#listScroll viewport {{ background: transparent; }}
@@ -235,7 +221,6 @@ class MainWindow(QWidget):
         self._collapsed_h = None  # 已完成面板折叠时窗口高度
         self._expanded_panel_h = 0
         self._panel_lift = 0
-        self._deleted_snapshot = None
         self._resize_dir = None
         self._resize_start_geo = None
         self._resize_origin = None
@@ -246,10 +231,6 @@ class MainWindow(QWidget):
         self._settings_save_timer.setSingleShot(True)
         self._settings_save_timer.setInterval(180)
         self._settings_save_timer.timeout.connect(self._flush_settings_save)
-        self._undo_timer = QTimer(self)
-        self._undo_timer.setSingleShot(True)
-        self._undo_timer.setInterval(5000)
-        self._undo_timer.timeout.connect(self._clear_undo)
         QApplication.instance().aboutToQuit.connect(self._flush_settings_save)
 
         self.setWindowTitle("桌面便签")
@@ -348,23 +329,6 @@ class MainWindow(QWidget):
         self.completed_panel.deleted.connect(self.on_delete)
         self.completed_panel.setVisible(False)
         v.addWidget(self.completed_panel)
-
-        self.undo_bar = QFrame()
-        self.undo_bar.setObjectName("undoBar")
-        undo_layout = QHBoxLayout(self.undo_bar)
-        undo_layout.setContentsMargins(14, 2, 6, 2)
-        self.undo_label = QLabel("已删除任务")
-        self.undo_label.setObjectName("undoLabel")
-        undo_layout.addWidget(self.undo_label)
-        undo_layout.addStretch()
-        self.undo_btn = QPushButton("撤销")
-        self.undo_btn.setObjectName("undoBtn")
-        self.undo_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        self.undo_btn.setFocusPolicy(Qt.NoFocus)
-        self.undo_btn.clicked.connect(self.undo_delete)
-        undo_layout.addWidget(self.undo_btn)
-        self.undo_bar.setVisible(False)
-        v.addWidget(self.undo_bar)
 
         self.load_tasks()
         self._restore_window_geometry()
@@ -508,7 +472,7 @@ class MainWindow(QWidget):
             return
         if task.text.strip() == "":
             # 空任务:直接删除,不进已完成栏
-            self.on_delete(task_id, offer_undo=False)
+            self.on_delete(task_id, permanent=True)
             return
         self.store.complete(task_id)
         item = self._active_items.pop(task_id, None)
@@ -531,9 +495,12 @@ class MainWindow(QWidget):
     def on_text_changed(self, task_id, text):
         self.store.update_text(task_id, text)
 
-    def on_delete(self, task_id, offer_undo=True):
-        deleted = self.store.delete(task_id)
-        if deleted is None:
+    def on_delete(self, task_id, permanent=False):
+        if permanent:
+            deleted = self.store.permanent_delete([task_id])
+        else:
+            deleted = [self.store.delete(task_id)]
+        if not deleted or deleted[0] is None:
             return
         item = self._active_items.pop(task_id, None)
         if item is not None:
@@ -543,29 +510,6 @@ class MainWindow(QWidget):
         self.completed_panel.set_tasks(self.store.completed_tasks())
         self._sync_expanded_panel_height()
         self._update_footer()
-        if offer_undo:
-            self._deleted_snapshot = deleted
-            self.undo_bar.setVisible(True)
-            self._undo_timer.start()
-
-    def undo_delete(self):
-        if self._deleted_snapshot is None:
-            return
-        task, index = self._deleted_snapshot
-        self.store.reinstate(task, index)
-        if task.completed:
-            self.completed_panel.set_tasks(self.store.completed_tasks())
-            self._sync_expanded_panel_height()
-        else:
-            position = self.store.active_tasks().index(task)
-            self._add_item_widget(task, focus=False, position=position)
-        self._update_footer()
-        self._clear_undo()
-
-    def _clear_undo(self):
-        self._undo_timer.stop()
-        self._deleted_snapshot = None
-        self.undo_bar.setVisible(False)
 
     # ---- 已完成面板展开/折叠(向下扩展窗口高度,不挤压任务列表)----
     def toggle_completed(self):
@@ -732,8 +676,31 @@ class MainWindow(QWidget):
             return
         win = SettingsWindow(self.settings, parent=self)
         win.changed.connect(self._on_settings_changed)
+        win.history_requested.connect(self.open_history)
         self._settings_win = win
         win.show()
+
+    def open_history(self):
+        win = getattr(self, "_history_win", None)
+        if win is None:
+            win = HistoryWindow(self.store, parent=self)
+            win.changed.connect(self._reload_task_views)
+            self._history_win = win
+        win.refresh()
+        win.show()
+        win.raise_()
+        win.activateWindow()
+
+    def _reload_task_views(self):
+        for item in self._active_items.values():
+            self.list_layout.removeWidget(item)
+            item.deleteLater()
+        self._active_items.clear()
+        for task in self.store.active_tasks():
+            self._add_item_widget(task, focus=False, animate=False)
+        self.completed_panel.set_tasks(self.store.completed_tasks())
+        self._sync_expanded_panel_height()
+        self._update_footer()
 
     def _on_settings_changed(self):
         """设置变动立即预览，短时间内的连续磁盘写入合并保存。"""
@@ -876,6 +843,9 @@ class MainWindow(QWidget):
         win = getattr(self, "_settings_win", None)
         if win is not None:
             win.close()
+        history_win = getattr(self, "_history_win", None)
+        if history_win is not None:
+            history_win.close()
         saved_height = self.height()
         saved_y = self.y()
         if self._completed_expanded:

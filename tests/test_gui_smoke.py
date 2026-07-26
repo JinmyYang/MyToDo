@@ -341,7 +341,9 @@ def test_completed_right_click_delete(app):
         w.completed_panel.deleted.emit(t.id)
         app.processEvents()
         assert len(store.completed_tasks()) == 0
-        assert store.get(t.id) is None
+        assert store.get(t.id) is t
+        assert t.deleted is True
+        assert store.history_tasks() == [t]
         assert w.footer_btn.text().startswith("已完成  0")
 
 
@@ -479,7 +481,7 @@ def test_keyboard_shortcuts_create_and_toggle_lock(app):
         assert len(store.active_tasks()) == 1
 
 
-def test_delete_can_be_undone(app):
+def test_deleted_task_can_be_restored_from_history_window(app):
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         store = TaskStore(root / "tasks.json")
@@ -491,19 +493,44 @@ def test_delete_can_be_undone(app):
 
         w.on_delete(task.id)
         app.processEvents()
-        assert store.get(task.id) is None
-        assert w.undo_bar.isVisible()
+        assert task.deleted is True
+        assert task.id not in w._active_items
 
-        w.undo_delete()
+        w.open_history()
+        history = w._history_win
+        item = history.tree.topLevelItem(0)
+        assert item.data(0, Qt.UserRole) == task.id
+        item.setCheckState(0, Qt.Checked)
+        history.restore_selected()
         app.processEvents()
         assert store.get(task.id) is task
+        assert task.deleted is False
         assert task.id in w._active_items
         visible_ids = [
             w.list_layout.itemAt(index).widget().task.id
             for index in range(2)
         ]
         assert visible_ids == [task.id, second.id]
-        assert not w.undo_bar.isVisible()
+
+
+def test_history_window_batch_permanently_deletes_selected(app):
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        completed = store.add("完成项")
+        deleted = store.add("删除项")
+        store.complete(completed.id)
+        store.delete(deleted.id)
+        w = MainWindow(store, settings_path=root / "settings.json")
+        w.open_history()
+        history = w._history_win
+
+        history._toggle_all()
+        history.delete_selected(confirm=False)
+        app.processEvents()
+
+        assert store.history_tasks() == []
+        assert history.tree.topLevelItemCount() == 0
 
 
 def test_loaded_rows_do_not_animate_but_new_rows_do(app):
@@ -538,6 +565,36 @@ def test_completed_panel_uses_content_height_and_stays_on_screen(app):
         app.processEvents()
         assert 42 <= w._expanded_panel_h < 160
         assert w.frameGeometry().bottom() <= screen.bottom()
+
+
+def test_completed_panel_keeps_height_after_complete_restore_and_delete(app):
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        active = store.add("待完成")
+        completed = []
+        for index in range(5):
+            task = store.add(f"完成任务 {index}")
+            store.complete(task.id)
+            completed.append(task)
+        w = MainWindow(store, settings_path=root / "settings.json")
+        w.show()
+        w.toggle_completed()
+        app.processEvents()
+        initial_height = w.completed_panel.height()
+        assert initial_height > 80
+
+        w.on_complete(active.id)
+        app.processEvents()
+        assert w.completed_panel.height() > 80
+
+        w.on_restore(completed[0].id)
+        app.processEvents()
+        assert w.completed_panel.height() > 80
+
+        w.on_delete(completed[1].id)
+        app.processEvents()
+        assert w.completed_panel.height() > 80
 
 
 def test_window_geometry_is_restored_and_clamped_to_screen(app):

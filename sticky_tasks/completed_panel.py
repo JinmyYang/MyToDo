@@ -176,12 +176,17 @@ class CompletedPanel(QWidget):
             self.body.insertWidget(self.body.count() - 1, row)
             self._row_for[t.id] = row
         self.body.activate()
-        self.body_container.adjustSize()
 
     def content_height(self):
         """返回完整展示当前内容所需的面板高度。"""
         margins = self.layout().contentsMargins()
-        return max(42, self.body_container.sizeHint().height() + margins.top() + margins.bottom())
+        rows = list(self._row_for.values())
+        heights = []
+        for row in rows:
+            row.layout().activate()
+            heights.append(max(34, row.sizeHint().height()))
+        spacing = self.body.spacing() * max(0, len(rows) - 1)
+        return max(42, sum(heights) + spacing + margins.top() + margins.bottom())
 
 
     def _make_row(self, task):
