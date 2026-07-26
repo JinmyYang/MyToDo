@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QMenu, QSizePolicy,
 )
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QCursor, QColor
+from PySide6.QtGui import QCursor, QColor, QFont
 
 from .app_settings import Theme
 
@@ -63,10 +63,15 @@ QFrame#completedItem {{
 QFrame#completedItem:hover {{
     background: rgba({hl.red()}, {hl.green()}, {hl.blue()}, {hl.alpha() + 3});
 }}
-QLabel#doneText {{ color: rgba({ico.red()},{ico.green()},{ico.blue()},180); font-size: 12px; }}
+QLabel#doneText {{
+    color: rgba({ico.red()},{ico.green()},{ico.blue()},180);
+    font-family: "{t.font_family}";
+    font-size: {max(9, t.font_size - 1)}px;
+}}
 QLabel#doneTextDone {{
     color: rgba({ico.red()},{ico.green()},{ico.blue()},200);
-    font-size: 12px;
+    font-family: "{t.font_family}";
+    font-size: {max(9, t.font_size - 1)}px;
     text-decoration: line-through;
 }}
 QPushButton#restoreBtn {{
@@ -136,6 +141,7 @@ class CompletedPanel(QWidget):
         self.setStyleSheet(PANEL_QSS)
         self.setMaximumHeight(160)
         self._row_for = {}
+        self._theme = None
 
         v = QVBoxLayout(self)
         v.setContentsMargins(0, 7, 0, 6)
@@ -154,6 +160,7 @@ class CompletedPanel(QWidget):
         v.addWidget(self.scroll, 1)
 
     def set_theme(self, theme: Theme):
+        self._theme = theme
         self.setStyleSheet(build_panel_qss(theme))
 
     def set_tasks(self, tasks):
@@ -168,6 +175,13 @@ class CompletedPanel(QWidget):
             row = self._make_row(t)
             self.body.insertWidget(self.body.count() - 1, row)
             self._row_for[t.id] = row
+        self.body.activate()
+        self.body_container.adjustSize()
+
+    def content_height(self):
+        """返回完整展示当前内容所需的面板高度。"""
+        margins = self.layout().contentsMargins()
+        return max(42, self.body_container.sizeHint().height() + margins.top() + margins.bottom())
 
 
     def _make_row(self, task):
@@ -177,7 +191,13 @@ class CompletedPanel(QWidget):
         h.setSpacing(8)
         text = task.text if task.text else "(空任务)"
         lbl = QLabel(text)
+        lbl.setTextFormat(Qt.PlainText)
         lbl.setObjectName("doneTextDone" if task.text else "doneText")
+        if self._theme is not None:
+            font = QFont(self._theme.font_family)
+            font.setPixelSize(max(9, self._theme.font_size - 1))
+            font.setStrikeOut(True)
+            lbl.setFont(font)
         lbl.setWordWrap(True)            # 长文本触碰框边自动换行
         lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         h.addWidget(lbl, 1)

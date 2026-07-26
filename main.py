@@ -7,7 +7,8 @@
 import sys
 from pathlib import Path
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from sticky_tasks.main_window import MainWindow
 from sticky_tasks.task_store import TaskStore
@@ -23,6 +24,13 @@ def main():
     store = TaskStore(DATA_FILE)
     window = MainWindow(store, settings_path=SETTINGS_FILE)
     window.show()
+    if store.load_warning:
+        QTimer.singleShot(
+            0,
+            lambda message=store.load_warning: QMessageBox.warning(
+                window, "任务数据恢复", message,
+            ),
+        )
     sys.exit(app.exec())
 
 

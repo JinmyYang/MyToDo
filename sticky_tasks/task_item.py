@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QMenu, QFrame, QPlainTextEdit, QSizePolicy,
 )
 from PySide6.QtCore import Signal, Qt, QEvent, QTimer, QRect, QPointF
-from PySide6.QtGui import QCursor, QTextCursor, QPainter, QColor, QPen
+from PySide6.QtGui import QCursor, QTextCursor, QPainter, QColor, QPen, QFont
 
 from .app_settings import Theme
 
@@ -25,6 +25,7 @@ class DotButton(QWidget):
         self._hovered = False
         self._normal_color = QColor("#55555f")
         self._accent_color = QColor("#5ea0ff")
+        self._pressed = False
         self.setMouseTracking(True)
 
     def set_theme(self, theme: Theme):
@@ -64,7 +65,20 @@ class DotButton(QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self.clicked.emit()
+            self._pressed = True
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self._pressed:
+            self._pressed = False
+            if self.rect().contains(event.position().toPoint()):
+                self.clicked.emit()
+            event.accept()
+            return
+        self._pressed = False
+        super().mouseReleaseEvent(event)
 
 class TaskItem(QWidget):
     """一行任务。
@@ -120,6 +134,8 @@ class TaskItem(QWidget):
         self.label.setTextInteractionFlags(Qt.NoTextInteraction)
         self.label.setMinimumWidth(0)
         self.label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.label.setCursor(QCursor(Qt.IBeamCursor))
+        self.label.installEventFilter(self)
         self.label.setStyleSheet("""
     QLabel#taskText {
         background: transparent;
@@ -214,6 +230,10 @@ class TaskItem(QWidget):
         padding: 5px 7px;
     }}
 """)
+        font = QFont(ff)
+        font.setPixelSize(fs)
+        self.label.setFont(font)
+        self.edit.setFont(font)
         self._schedule_fit_height()
         self.update()
 
@@ -320,7 +340,15 @@ class TaskItem(QWidget):
             self._schedule_fit_height()
 
     def eventFilter(self, obj, event):
-        if obj is self.edit:
+        if obj is self.label:
+            if (
+                event.type() == QEvent.MouseButtonRelease
+                and event.button() == Qt.LeftButton
+                and self.label.rect().contains(event.position().toPoint())
+            ):
+                self.start_edit()
+                return True
+        if obj is getattr(self, "edit", None):
             if event.type() == QEvent.FocusOut:
                 self._on_editing_finished()
                 return False
@@ -375,6 +403,7 @@ class TaskItem(QWidget):
     def set_locked(self, locked):
         self._locked = locked
         self.dot.setVisible(not locked)
+        self.label.setCursor(QCursor(Qt.ArrowCursor if locked else Qt.IBeamCursor))
         if locked and self.stack.currentIndex() == self._EDIT_PAGE:
             self._exit_edit()
         self.update()

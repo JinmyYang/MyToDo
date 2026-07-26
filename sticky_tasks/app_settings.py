@@ -11,6 +11,8 @@ from pathlib import Path
 
 from PySide6.QtGui import QColor
 
+from .json_io import atomic_write_text
+
 
 def _luminance(c: QColor) -> float:
     """相对亮度(0~255),用于判断背景明暗。"""
@@ -98,6 +100,10 @@ class AppSettings:
     font_family: str = "Segoe UI Variable"
     font_size: int = 13
     bg_opacity: int = 240
+    window_x: int | None = None
+    window_y: int | None = None
+    window_width: int | None = None
+    window_height: int | None = None
 
     def to_theme(self) -> Theme:
         return Theme(
@@ -109,10 +115,9 @@ class AppSettings:
         )
 
     def save(self, path: Path):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
+        atomic_write_text(
+            path,
             json.dumps(asdict(self), ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )
 
     @classmethod
@@ -130,7 +135,10 @@ class AppSettings:
             if key in data and isinstance(data[key], str):
                 setattr(s, key, data[key])
         for key in ("font_size", "bg_opacity"):
-            if key in data and isinstance(data[key], int):
+            if key in data and type(data[key]) is int:
+                setattr(s, key, data[key])
+        for key in ("window_x", "window_y", "window_width", "window_height"):
+            if key in data and type(data[key]) is int:
                 setattr(s, key, data[key])
         # 校验颜色合法性
         if not QColor(s.bg_color).isValid():
@@ -139,4 +147,8 @@ class AppSettings:
             s.text_color = "#e9e9ef"
         s.font_size = max(9, min(24, s.font_size))
         s.bg_opacity = max(60, min(255, s.bg_opacity))
+        if s.window_width is not None:
+            s.window_width = max(220, s.window_width)
+        if s.window_height is not None:
+            s.window_height = max(200, s.window_height)
         return s

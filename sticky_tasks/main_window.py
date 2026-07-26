@@ -1,4 +1,4 @@
-"""主窗口:半透明、无边框、置顶的桌面便签。"""
+"""主窗口:半透明、无边框、普通层级的桌面便签。"""
 
 import math
 from pathlib import Path
@@ -9,9 +9,11 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import (
     Qt, QEvent, QSize, QPointF, Signal, QRectF, QPropertyAnimation, QEasingCurve,
+    QTimer,
 )
 from PySide6.QtGui import (
     QCursor, QPixmap, QPainter, QPainterPath, QColor, QIcon, QFont, QPen,
+    QShortcut, QKeySequence,
 )
 
 from .task_store import TaskStore
@@ -59,12 +61,12 @@ QLabel#titleLabel {{
 }}
 QPushButton {{ color: {txt.name()}; background: transparent; border: none; }}
 QPushButton#inlineAddBtn {{
-    color: rgba({ico.red()}, {ico.green()}, {ico.blue()}, 160);
+    color: rgba({ico.red()}, {ico.green()}, {ico.blue()}, 190);
     background: transparent;
     border: none;
     border-radius: 9px;
     font-size: 17px;
-    font-weight: 400;
+    font-weight: 500;
     text-align: left;
     padding: 5px 0 5px 16px;
 }}
@@ -95,6 +97,21 @@ QPushButton#settingsBtn:hover {{
 QFrame#footerBar {{
     border-top: 1px solid rgba({sep.red()}, {sep.green()}, {sep.blue()}, {sep.alpha()});
     background: transparent;
+}}
+QFrame#undoBar {{
+    border-top: 1px solid rgba({sep.red()}, {sep.green()}, {sep.blue()}, {sep.alpha()});
+    background: transparent;
+}}
+QLabel#undoLabel {{ color: {txt.name()}; font-size: 11px; }}
+QPushButton#undoBtn {{
+    color: {acc.name()};
+    padding: 5px 12px;
+    font-size: 11px;
+    font-weight: 600;
+}}
+QPushButton#undoBtn:hover {{
+    background: rgba({hl.red()}, {hl.green()}, {hl.blue()}, {hl.alpha() + 4});
+    border-radius: 6px;
 }}
 QScrollArea#listScroll {{ border: none; background: transparent; }}
 QScrollArea#listScroll viewport {{ background: transparent; }}
@@ -133,7 +150,8 @@ class LockButton(QWidget):
         self.update()
 
     def _sync_tooltip(self):
-        self.setToolTip("解锁窗口" if self._locked else "锁定窗口")
+        action = "解锁窗口" if self._locked else "锁定窗口"
+        self.setToolTip(f"{action} (Ctrl+L)")
 
     def paintEvent(self, event):
         p = QPainter(self)
@@ -175,7 +193,7 @@ class LockButton(QWidget):
             self.toggled.emit(not self._locked)
 
 class HeaderBar(QFrame):
-    """上方栏:加号与锁头横向排列、空白可拖动、右键退出/解锁。"""
+    """上方栏:标题、锁头、空白拖动区域及右键菜单。"""
 
     def __init__(self, window):
         super().__init__()
@@ -215,11 +233,24 @@ class MainWindow(QWidget):
         self._locked = False
         self._completed_expanded = False
         self._collapsed_h = None  # 已完成面板折叠时窗口高度
+        self._expanded_panel_h = 0
+        self._panel_lift = 0
+        self._deleted_snapshot = None
         self._resize_dir = None
         self._resize_start_geo = None
         self._resize_origin = None
         self._edge_watch_ready = False
         self._cursor_overriding = False  # 是否已压入应用级 resize 光标
+        self._settings_dirty = False
+        self._settings_save_timer = QTimer(self)
+        self._settings_save_timer.setSingleShot(True)
+        self._settings_save_timer.setInterval(180)
+        self._settings_save_timer.timeout.connect(self._flush_settings_save)
+        self._undo_timer = QTimer(self)
+        self._undo_timer.setSingleShot(True)
+        self._undo_timer.setInterval(5000)
+        self._undo_timer.timeout.connect(self._clear_undo)
+        QApplication.instance().aboutToQuit.connect(self._flush_settings_save)
 
         self.setWindowTitle("桌面便签")
         self.setFont(QFont(self.theme.font_family, 10))
@@ -273,7 +304,7 @@ class MainWindow(QWidget):
         self._inline_add_btn.setFixedHeight(32)
         self._inline_add_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self._inline_add_btn.setFocusPolicy(Qt.NoFocus)
-        self._inline_add_btn.setToolTip("新建任务")
+        self._inline_add_btn.setToolTip("新建任务 (Ctrl+N)")
         self._inline_add_btn.clicked.connect(self.add_task)
         self.list_layout.addWidget(self._inline_add_btn)
 
@@ -318,7 +349,30 @@ class MainWindow(QWidget):
         self.completed_panel.setVisible(False)
         v.addWidget(self.completed_panel)
 
+        self.undo_bar = QFrame()
+        self.undo_bar.setObjectName("undoBar")
+        undo_layout = QHBoxLayout(self.undo_bar)
+        undo_layout.setContentsMargins(14, 2, 6, 2)
+        self.undo_label = QLabel("已删除任务")
+        self.undo_label.setObjectName("undoLabel")
+        undo_layout.addWidget(self.undo_label)
+        undo_layout.addStretch()
+        self.undo_btn = QPushButton("撤销")
+        self.undo_btn.setObjectName("undoBtn")
+        self.undo_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self.undo_btn.setFocusPolicy(Qt.NoFocus)
+        self.undo_btn.clicked.connect(self.undo_delete)
+        undo_layout.addWidget(self.undo_btn)
+        self.undo_bar.setVisible(False)
+        v.addWidget(self.undo_bar)
+
         self.load_tasks()
+        self._restore_window_geometry()
+
+        self._new_shortcut = QShortcut(QKeySequence("Ctrl+N"), self)
+        self._new_shortcut.activated.connect(self.add_task)
+        self._lock_shortcut = QShortcut(QKeySequence("Ctrl+L"), self)
+        self._lock_shortcut.activated.connect(self.toggle_locked)
 
         # 让边缘缩放对"可见深色块边缘"生效:给容器及所有子控件开鼠标追踪 + 事件过滤
         self._install_edge_watch(self.container)
@@ -404,22 +458,25 @@ class MainWindow(QWidget):
     # ---- 加载 ----
     def load_tasks(self):
         for t in self.store.active_tasks():
-            self._add_item_widget(t, focus=False)
+            self._add_item_widget(t, focus=False, animate=False)
         self.completed_panel.set_tasks(self.store.completed_tasks())
         self._update_footer()
 
-    def _add_item_widget(self, task, focus=True):
+    def _add_item_widget(self, task, focus=True, animate=True, position=None):
         item = TaskItem(task)
         item.set_theme(self.theme)
         item.completed.connect(self.on_complete)
         item.text_changed.connect(self.on_text_changed)
         item.delete_requested.connect(self.on_delete)
         # 插到加号按钮之前(加号始终紧跟最后一个任务,其后才是末尾 stretch)
-        self.list_layout.insertWidget(self.list_layout.count() - 2, item)
+        if position is None:
+            position = self.list_layout.count() - 2
+        self.list_layout.insertWidget(position, item)
         self._active_items[task.id] = item
         if self._edge_watch_ready:
             self._watch_widget(item)  # 新任务行也纳入边缘检测
-        self._fade_in(item)
+        if animate:
+            self._fade_in(item)
         if focus:
             item.start_edit()
         return item
@@ -440,6 +497,8 @@ class MainWindow(QWidget):
 
     # ---- 操作 ----
     def add_task(self):
+        if self._locked:
+            return
         task = self.store.add("")
         self._add_item_widget(task, focus=True)
 
@@ -449,7 +508,7 @@ class MainWindow(QWidget):
             return
         if task.text.strip() == "":
             # 空任务:直接删除,不进已完成栏
-            self.on_delete(task_id)
+            self.on_delete(task_id, offer_undo=False)
             return
         self.store.complete(task_id)
         item = self._active_items.pop(task_id, None)
@@ -457,11 +516,13 @@ class MainWindow(QWidget):
             self.list_layout.removeWidget(item)
             item.deleteLater()
         self.completed_panel.set_tasks(self.store.completed_tasks())
+        self._sync_expanded_panel_height()
         self._update_footer()
 
     def on_restore(self, task_id):
         self.store.restore(task_id)
         self.completed_panel.set_tasks(self.store.completed_tasks())
+        self._sync_expanded_panel_height()
         task = self.store.get(task_id)
         if task is not None:
             self._add_item_widget(task, focus=False)
@@ -470,15 +531,41 @@ class MainWindow(QWidget):
     def on_text_changed(self, task_id, text):
         self.store.update_text(task_id, text)
 
-    def on_delete(self, task_id):
-        self.store.delete(task_id)
+    def on_delete(self, task_id, offer_undo=True):
+        deleted = self.store.delete(task_id)
+        if deleted is None:
+            return
         item = self._active_items.pop(task_id, None)
         if item is not None:
             self.list_layout.removeWidget(item)
             item.deleteLater()
         # 已完成任务删除后也要刷新面板
         self.completed_panel.set_tasks(self.store.completed_tasks())
+        self._sync_expanded_panel_height()
         self._update_footer()
+        if offer_undo:
+            self._deleted_snapshot = deleted
+            self.undo_bar.setVisible(True)
+            self._undo_timer.start()
+
+    def undo_delete(self):
+        if self._deleted_snapshot is None:
+            return
+        task, index = self._deleted_snapshot
+        self.store.reinstate(task, index)
+        if task.completed:
+            self.completed_panel.set_tasks(self.store.completed_tasks())
+            self._sync_expanded_panel_height()
+        else:
+            position = self.store.active_tasks().index(task)
+            self._add_item_widget(task, focus=False, position=position)
+        self._update_footer()
+        self._clear_undo()
+
+    def _clear_undo(self):
+        self._undo_timer.stop()
+        self._deleted_snapshot = None
+        self.undo_bar.setVisible(False)
 
     # ---- 已完成面板展开/折叠(向下扩展窗口高度,不挤压任务列表)----
     def toggle_completed(self):
@@ -486,13 +573,76 @@ class MainWindow(QWidget):
             self._collapsed_h = self.height()
             self._completed_expanded = True
             self.completed_panel.setVisible(True)
-            self.resize(self.width(), self._collapsed_h + PANEL_H)
+            self._expanded_panel_h = min(PANEL_H, self.completed_panel.content_height())
+            self.completed_panel.setFixedHeight(self._expanded_panel_h)
+            self.resize(self.width(), self._collapsed_h + self._expanded_panel_h)
+            self._keep_expanded_panel_on_screen()
         else:
             self._completed_expanded = False
             self.completed_panel.setVisible(False)
-            if self._collapsed_h is not None:
-                self.resize(self.width(), self._collapsed_h)
+            # 用户可能在展开状态下调整过高度，应保留这次调整。
+            self._collapsed_h = max(MIN_H, self.height() - self._expanded_panel_h)
+            self.resize(self.width(), self._collapsed_h)
+            if self._panel_lift:
+                self.move(self.x(), self.y() + self._panel_lift)
+            self._panel_lift = 0
+            self.completed_panel.setMinimumHeight(0)
+            self.completed_panel.setMaximumHeight(PANEL_H)
         self._update_footer()
+
+    def _sync_expanded_panel_height(self):
+        if not self._completed_expanded:
+            return
+        old_height = self._expanded_panel_h
+        self._expanded_panel_h = min(PANEL_H, self.completed_panel.content_height())
+        self.completed_panel.setFixedHeight(self._expanded_panel_h)
+        self.resize(
+            self.width(),
+            max(MIN_H, self.height() + self._expanded_panel_h - old_height),
+        )
+        if self._expanded_panel_h < old_height and self._panel_lift:
+            drop = min(self._panel_lift, old_height - self._expanded_panel_h)
+            self.move(self.x(), self.y() + drop)
+            self._panel_lift -= drop
+        self._keep_expanded_panel_on_screen()
+
+    def _keep_expanded_panel_on_screen(self):
+        screen = (
+            QApplication.screenAt(self.frameGeometry().center())
+            or QApplication.primaryScreen()
+        )
+        if screen is None:
+            return
+        available = screen.availableGeometry()
+        overflow = max(0, self.frameGeometry().bottom() - available.bottom())
+        if overflow:
+            lift = min(overflow, max(0, self.y() - available.top()))
+            self.move(self.x(), self.y() - lift)
+            self._panel_lift += lift
+
+    def _restore_window_geometry(self):
+        width = self.settings.window_width or 320
+        height = self.settings.window_height or 460
+        x = self.settings.window_x
+        y = self.settings.window_y
+        if x is None or y is None:
+            self.resize(width, height)
+            return
+        primary = QApplication.primaryScreen()
+        target = next(
+            (screen for screen in QApplication.screens()
+             if screen.availableGeometry().contains(x, y)),
+            primary,
+        )
+        if target is None:
+            self.setGeometry(x, y, width, height)
+            return
+        available = target.availableGeometry()
+        width = min(max(MIN_W, width), available.width())
+        height = min(max(MIN_H, height), available.height())
+        x = min(max(x, available.left()), available.right() - width + 1)
+        y = min(max(y, available.top()), available.bottom() - height + 1)
+        self.setGeometry(x, y, width, height)
 
     def _footer_text(self):
         n = len(self.store.completed_tasks())
@@ -580,15 +730,23 @@ class MainWindow(QWidget):
             win.raise_()
             win.activateWindow()
             return
-        win = SettingsWindow(self.settings, parent=None)
+        win = SettingsWindow(self.settings, parent=self)
         win.changed.connect(self._on_settings_changed)
         self._settings_win = win
         win.show()
 
     def _on_settings_changed(self):
-        """设置窗口任何变动 → 实时刷新 + 持久化。"""
-        self.settings.save(self._settings_path)
+        """设置变动立即预览，短时间内的连续磁盘写入合并保存。"""
         self.apply_theme()
+        self._settings_dirty = True
+        self._settings_save_timer.start()
+
+    def _flush_settings_save(self):
+        if not self._settings_dirty:
+            return
+        self._settings_save_timer.stop()
+        self.settings.save(self._settings_path)
+        self._settings_dirty = False
 
     def apply_theme(self):
         """重新从 settings 生成主题并刷新所有 UI。"""
@@ -712,6 +870,25 @@ class MainWindow(QWidget):
         if "bottom" in d:
             h = max(MIN_H, h + dy)
         self.setGeometry(x, y, w, h)
+
+    def closeEvent(self, event):
+        """主窗口关闭时同步关闭独立设置窗口并清理全局光标。"""
+        win = getattr(self, "_settings_win", None)
+        if win is not None:
+            win.close()
+        saved_height = self.height()
+        saved_y = self.y()
+        if self._completed_expanded:
+            saved_height = max(MIN_H, saved_height - self._expanded_panel_h)
+            saved_y += self._panel_lift
+        self.settings.window_x = self.x()
+        self.settings.window_y = saved_y
+        self.settings.window_width = self.width()
+        self.settings.window_height = saved_height
+        self._settings_dirty = True
+        self._flush_settings_save()
+        self._apply_edge_cursor(None)
+        super().closeEvent(event)
 
     # ---- 拖动窗口(点空白区域拖动) + 边缘 resize----
     def mousePressEvent(self, event):

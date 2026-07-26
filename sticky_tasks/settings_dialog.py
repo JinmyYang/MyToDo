@@ -1,12 +1,12 @@
 """设置窗口:自定义背景色、字体色、字体、字号、透明度。
 
 独立非模态窗口,不遮挡主界面;任何修改即时生效(实时预览)。
-调用 Windows 原生颜色选择器(QColorDialog)和系统字体库(QFontDialog)。
+颜色使用系统选择器，字体直接在设置窗口的下拉框中选择。
 """
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QColorDialog, QFontDialog, QSlider, QSpinBox,
+    QColorDialog, QFontComboBox, QSlider, QSpinBox,
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFont, QCursor
@@ -62,6 +62,20 @@ QSpinBox {
     font-size: 12px;
 }
 QSpinBox::up-button, QSpinBox::down-button { width: 16px; }
+QFontComboBox {
+    background: rgba(255,255,255,8);
+    border: 1px solid rgba(255,255,255,20);
+    border-radius: 6px;
+    color: #e0e0e8;
+    min-height: 28px;
+    padding: 2px 8px;
+}
+QFontComboBox QAbstractItemView {
+    background: #282930;
+    border: 1px solid rgba(255,255,255,20);
+    color: #e0e0e8;
+    selection-background-color: #3d6599;
+}
 """
 
 # 预设主题:每套包含 bg_color, text_color, font_family, font_size, bg_opacity
@@ -144,16 +158,10 @@ class SettingsWindow(QWidget):
 
         # ---- 字体 ----
         root.addWidget(self._row_label("字体"))
-        font_row = QHBoxLayout()
-        self._font_label = QLabel(self._settings.font_family)
-        self._font_label.setStyleSheet("color: #e0e0e8; font-size: 12px;")
-        font_row.addWidget(self._font_label, 1)
-        font_btn = QPushButton("选择…")
-        font_btn.setObjectName("actionBtn")
-        font_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        font_btn.clicked.connect(self._pick_font)
-        font_row.addWidget(font_btn)
-        root.addLayout(font_row)
+        self._font_combo = QFontComboBox()
+        self._font_combo.setCurrentFont(QFont(self._settings.font_family))
+        self._font_combo.currentFontChanged.connect(self._on_font_changed)
+        root.addWidget(self._font_combo)
 
         # ---- 字号 ----
         root.addWidget(self._row_label("字号"))
@@ -219,7 +227,7 @@ class SettingsWindow(QWidget):
         """将当前 UI 状态写回 settings 并通知主窗口刷新。"""
         self._settings.bg_color = self._bg_color.name()
         self._settings.text_color = self._txt_color.name()
-        self._settings.font_family = self._font_family
+        self._settings.font_family = self._font_combo.currentFont().family()
         self._settings.font_size = self._size_spin.value()
         self._settings.bg_opacity = self._op_slider.value()
         self.changed.emit()
@@ -241,15 +249,8 @@ class SettingsWindow(QWidget):
             self._paint_color_btn(self._txt_btn, color)
             self._emit_changed()
 
-    def _pick_font(self):
-        initial = QFont(self._settings.font_family, self._settings.font_size)
-        ok, font = QFontDialog.getFont(initial, self, "选择字体")
-        if ok:
-            self._font_family = font.family()
-            if font.pointSize() > 0:
-                self._size_spin.setValue(font.pointSize())
-            self._font_label.setText(self._font_family)
-            self._emit_changed()
+    def _on_font_changed(self, font):
+        self._emit_changed()
 
     def _on_size_changed(self, val):
         self._emit_changed()
@@ -262,24 +263,36 @@ class SettingsWindow(QWidget):
         """一键应用预设主题。"""
         self._bg_color = QColor(preset["bg"])
         self._txt_color = QColor(preset["text"])
-        self._font_family = preset["font"]
         self._paint_color_btn(self._bg_btn, self._bg_color)
         self._paint_color_btn(self._txt_btn, self._txt_color)
-        self._font_label.setText(self._font_family)
+        self._font_combo.blockSignals(True)
+        self._size_spin.blockSignals(True)
+        self._op_slider.blockSignals(True)
+        self._font_combo.setCurrentFont(QFont(preset["font"]))
         self._size_spin.setValue(preset["size"])
         self._op_slider.setValue(preset["opacity"])
+        self._font_combo.blockSignals(False)
+        self._size_spin.blockSignals(False)
+        self._op_slider.blockSignals(False)
+        self._op_label.setText(f"{int(preset['opacity'] / 255 * 100)}%")
         self._emit_changed()
 
     def _reset(self):
         defaults = AppSettings()
         self._bg_color = QColor(defaults.bg_color)
         self._txt_color = QColor(defaults.text_color)
-        self._font_family = defaults.font_family
         self._paint_color_btn(self._bg_btn, self._bg_color)
         self._paint_color_btn(self._txt_btn, self._txt_color)
-        self._font_label.setText(self._font_family)
+        self._font_combo.blockSignals(True)
+        self._size_spin.blockSignals(True)
+        self._op_slider.blockSignals(True)
+        self._font_combo.setCurrentFont(QFont(defaults.font_family))
         self._size_spin.setValue(defaults.font_size)
         self._op_slider.setValue(defaults.bg_opacity)
+        self._font_combo.blockSignals(False)
+        self._size_spin.blockSignals(False)
+        self._op_slider.blockSignals(False)
+        self._op_label.setText(f"{int(defaults.bg_opacity / 255 * 100)}%")
         self._emit_changed()
 
     # ---- 初始化内部状态(从 settings 读取) ----
@@ -298,11 +311,3 @@ class SettingsWindow(QWidget):
     @_txt_color.setter
     def _txt_color(self, c: QColor):
         self._settings.text_color = c.name()
-
-    @property
-    def _font_family(self):
-        return self._settings.font_family
-
-    @_font_family.setter
-    def _font_family(self, f: str):
-        self._settings.font_family = f

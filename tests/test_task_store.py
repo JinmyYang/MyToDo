@@ -1,5 +1,6 @@
 """TaskStore 数据层单元测试。"""
 
+import json
 from pathlib import Path
 
 from sticky_tasks.task_store import TaskStore
@@ -31,6 +32,34 @@ def test_restore_moves_back_to_active(tmp_path):
     assert t.completed is False
     assert len(store.active_tasks()) == 1
     assert store.completed_tasks() == []
+    assert t.completed_at is None
+
+
+def test_completed_tasks_are_newest_first_and_timestamp_persists(tmp_path):
+    p = tmp_path / "tasks.json"
+    store = TaskStore(p)
+    older = store.add("先完成")
+    newer = store.add("后完成")
+    store.complete(older.id)
+    older.completed_at = "2026-01-01T10:00:00"
+    store.complete(newer.id)
+    newer.completed_at = "2026-01-02T10:00:00"
+    store.save()
+
+    reloaded = TaskStore(p)
+    assert [task.text for task in reloaded.completed_tasks()] == ["后完成", "先完成"]
+    assert reloaded.get(newer.id).completed_at == "2026-01-02T10:00:00"
+
+
+def test_old_json_without_completed_at_remains_compatible(tmp_path):
+    p = tmp_path / "tasks.json"
+    p.write_text(json.dumps([
+        {"id": "old", "text": "旧任务", "completed": True,
+         "created_at": "2025-01-01T00:00:00"},
+    ]), encoding="utf-8")
+
+    store = TaskStore(p)
+    assert store.completed_tasks()[0].completed_at is None
 
 
 def test_update_text(tmp_path):
@@ -46,6 +75,17 @@ def test_delete(tmp_path):
     store.delete(t.id)
     assert store.get(t.id) is None
     assert store.active_tasks() == []
+
+
+def test_deleted_task_can_be_reinstated_at_original_position(tmp_path):
+    store = TaskStore(tmp_path / "tasks.json")
+    first = store.add("第一")
+    second = store.add("第二")
+
+    task, index = store.delete(first.id)
+    store.reinstate(task, index)
+
+    assert [item.id for item in store.tasks] == [first.id, second.id]
 
 
 def test_persistence_roundtrip(tmp_path):
@@ -79,6 +119,15 @@ def test_load_corrupt_file_is_empty(tmp_path):
     p.write_text("not valid json {{{", encoding="utf-8")
     store = TaskStore(p)
     assert store.tasks == []  # 损坏文件不崩溃
+    assert store.load_warning is not None
+    assert store.corrupt_backup_path is not None
+    assert store.corrupt_backup_path.read_text(encoding="utf-8") == "not valid json {{{"
+    assert not p.exists()
+
+    # 后续保存使用新文件，不能覆盖唯一的损坏文件备份。
+    store.add("恢复后的任务")
+    assert p.exists()
+    assert store.corrupt_backup_path.exists()
 
 
 def test_load_skips_bad_records(tmp_path):

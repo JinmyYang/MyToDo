@@ -11,9 +11,10 @@ import pytest
 from PySide6.QtCore import Qt, QEvent, QPointF, QPoint
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
 from sticky_tasks.main_window import MainWindow
+from sticky_tasks.app_settings import AppSettings
 from sticky_tasks.task_store import TaskStore
 
 
@@ -342,3 +343,217 @@ def test_completed_right_click_delete(app):
         assert len(store.completed_tasks()) == 0
         assert store.get(t.id) is None
         assert w.footer_btn.text().startswith("已完成  0")
+
+
+def test_completed_text_is_always_plain_text(app):
+    """HTML 形态的任务完成后仍按字面显示，不改变内容样式。"""
+    with tempfile.TemporaryDirectory() as d:
+        store = TaskStore(Path(d) / "tasks.json")
+        task = store.add("<b>字面标签</b>")
+        store.complete(task.id)
+        w = MainWindow(store, settings_path=Path(d) / "settings.json")
+        row = w.completed_panel._row_for[task.id]
+        label = row.findChild(QLabel)
+
+        assert label.textFormat() == Qt.PlainText
+        assert label.text() == "<b>字面标签</b>"
+
+
+def test_collapsing_completed_panel_keeps_manual_height_change(app):
+    """展开状态下手动调整的高度，在折叠后继续保留。"""
+    with tempfile.TemporaryDirectory() as d:
+        store = TaskStore(Path(d) / "tasks.json")
+        w = MainWindow(store, settings_path=Path(d) / "settings.json")
+        w.show()
+        app.processEvents()
+
+        collapsed_h = w.height()
+        w.toggle_completed()
+        w.resize(w.width(), w.height() + 80)
+        w.toggle_completed()
+
+        assert w.height() == collapsed_h + 80
+
+
+def test_settings_window_closes_with_main_window(app):
+    """独立设置窗口不能在主窗口关闭后继续让应用驻留。"""
+    with tempfile.TemporaryDirectory() as d:
+        store = TaskStore(Path(d) / "tasks.json")
+        w = MainWindow(store, settings_path=Path(d) / "settings.json")
+        w.show()
+        w.open_settings()
+        app.processEvents()
+        settings_win = w._settings_win
+        assert settings_win.isVisible()
+
+        w.close()
+        app.processEvents()
+        assert not settings_win.isVisible()
+
+
+def test_dot_only_completes_when_released_inside(app):
+    """在圆点按下后拖出再释放，不应误完成任务。"""
+    with tempfile.TemporaryDirectory() as d:
+        store = TaskStore(Path(d) / "tasks.json")
+        task = store.add("任务")
+        w = MainWindow(store, settings_path=Path(d) / "settings.json")
+        w.show()
+        app.processEvents()
+        dot = w._active_items[task.id].dot
+
+        QTest.mousePress(dot, Qt.LeftButton, pos=QPoint(9, 9))
+        QTest.mouseRelease(dot, Qt.LeftButton, pos=QPoint(-2, -2))
+        app.processEvents()
+        assert store.get(task.id).completed is False
+
+        QTest.mouseClick(dot, Qt.LeftButton, pos=QPoint(9, 9))
+        app.processEvents()
+        assert store.get(task.id).completed is True
+
+
+def test_font_settings_apply_and_flush_on_immediate_close(app):
+    """字体名称/字号立即生效，防抖期内退出也必须保存。"""
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        settings_path = root / "settings.json"
+        store = TaskStore(root / "tasks.json")
+        task = store.add("带样式任务")
+        w = MainWindow(store, settings_path=settings_path)
+        w.show()
+        w.settings.font_family = "Arial"
+        w.settings.font_size = 16
+        w._on_settings_changed()
+
+        font = w._active_items[task.id].label.font()
+        assert font.family() == "Arial"
+        assert font.pixelSize() == 16
+
+        w.close()
+        loaded = AppSettings.load(settings_path)
+        assert loaded.font_family == "Arial"
+        assert loaded.font_size == 16
+
+
+def test_single_click_task_text_starts_edit_unless_locked(app):
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        task = store.add("点我编辑")
+        w = MainWindow(store, settings_path=root / "settings.json")
+        w.show()
+        app.processEvents()
+        item = w._active_items[task.id]
+
+        QTest.mouseClick(item.label, Qt.LeftButton)
+        app.processEvents()
+        assert item.stack.currentIndex() == item._EDIT_PAGE
+
+        item._exit_edit()
+        w.set_locked(True)
+        QTest.mouseClick(item.label, Qt.LeftButton)
+        app.processEvents()
+        assert item.stack.currentIndex() == item._LABEL_PAGE
+
+
+def test_keyboard_shortcuts_create_and_toggle_lock(app):
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        w = MainWindow(store, settings_path=root / "settings.json")
+        w.show()
+        w.activateWindow()
+        app.processEvents()
+
+        QTest.keyClick(w, Qt.Key_N, Qt.ControlModifier)
+        app.processEvents()
+        assert len(store.active_tasks()) == 1
+        new_item = list(w._active_items.values())[-1]
+        new_item.edit.setPlainText("快捷键任务")
+        new_item._on_editing_finished()
+
+        QTest.keyClick(w, Qt.Key_L, Qt.ControlModifier)
+        app.processEvents()
+        assert w._locked
+        QTest.keyClick(w, Qt.Key_N, Qt.ControlModifier)
+        app.processEvents()
+        assert len(store.active_tasks()) == 1
+
+
+def test_delete_can_be_undone(app):
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        task = store.add("不要删我")
+        second = store.add("第二个任务")
+        w = MainWindow(store, settings_path=root / "settings.json")
+        w.show()
+        app.processEvents()
+
+        w.on_delete(task.id)
+        app.processEvents()
+        assert store.get(task.id) is None
+        assert w.undo_bar.isVisible()
+
+        w.undo_delete()
+        app.processEvents()
+        assert store.get(task.id) is task
+        assert task.id in w._active_items
+        visible_ids = [
+            w.list_layout.itemAt(index).widget().task.id
+            for index in range(2)
+        ]
+        assert visible_ids == [task.id, second.id]
+        assert not w.undo_bar.isVisible()
+
+
+def test_loaded_rows_do_not_animate_but_new_rows_do(app):
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        existing = store.add("已有任务")
+        w = MainWindow(store, settings_path=root / "settings.json")
+        w.show()
+        app.processEvents()
+
+        assert w._active_items[existing.id].graphicsEffect() is None
+        w.add_task()
+        new_item = list(w._active_items.values())[-1]
+        assert new_item.graphicsEffect() is not None
+
+
+def test_completed_panel_uses_content_height_and_stays_on_screen(app):
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        task = store.add("已完成")
+        store.complete(task.id)
+        w = MainWindow(store, settings_path=root / "settings.json")
+        screen = QApplication.primaryScreen().availableGeometry()
+        w.resize(320, 300)
+        w.move(screen.left() + 20, screen.bottom() - w.height() + 1)
+        w.show()
+        app.processEvents()
+
+        w.toggle_completed()
+        app.processEvents()
+        assert 42 <= w._expanded_panel_h < 160
+        assert w.frameGeometry().bottom() <= screen.bottom()
+
+
+def test_window_geometry_is_restored_and_clamped_to_screen(app):
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        settings_path = root / "settings.json"
+        settings = AppSettings(
+            window_x=100000,
+            window_y=100000,
+            window_width=360,
+            window_height=500,
+        )
+        settings.save(settings_path)
+        w = MainWindow(TaskStore(root / "tasks.json"), settings_path=settings_path)
+        screen = QApplication.primaryScreen().availableGeometry()
+
+        assert screen.contains(w.frameGeometry().topLeft())
+        assert w.width() == 360
+        assert w.height() == 500
