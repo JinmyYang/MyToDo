@@ -207,8 +207,15 @@ class TaskItem(QWidget):
             p.setBrush(self._hover_color)
             p.drawRoundedRect(self.rect().adjusted(4, 1, -4, 0), 9, 9)
         p.setPen(self._sep_color)
-        p.drawLine(40, self.height() - 1, self.width() - 12, self.height() - 1)
+        p.drawLine(
+            self._separator_left(), self.height() - 1,
+            self.width() - 12, self.height() - 1,
+        )
         p.end()
+
+    def _separator_left(self):
+        """分隔线跟随文本区域，圆点隐藏后自动向左延伸。"""
+        return self.stack.geometry().left()
 
     def enterEvent(self, event):
         self._hovered = True

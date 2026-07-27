@@ -840,6 +840,9 @@ class MainWindow(QWidget):
         self.header.lock_btn.setVisible(True)
         self._inline_add_btn.setVisible(not locked)
         self.footer_bar.setVisible(not locked)
+        self.scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarAlwaysOff if locked else Qt.ScrollBarAsNeeded,
+        )
         if locked and self._completed_expanded:
             self.toggle_completed()  # 锁定时收起已完成面板
         for item in list(self._active_items.values()):

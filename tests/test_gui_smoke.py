@@ -128,29 +128,40 @@ def test_persistence_reload_restores_ui(app):
 
 
 def test_lock_hides_controls_and_unlock_restores(app):
-    """锁定后隐藏圆点/加号/锁头按钮,解锁恢复。"""
+    """锁定后隐藏控件和滚动条，分隔线随文本左移，解锁恢复。"""
     with tempfile.TemporaryDirectory() as d:
         store = TaskStore(Path(d) / "tasks.json")
-        store.add("任务一")
+        for index in range(20):
+            store.add(f"任务 {index}")
         w = MainWindow(store)
         w.show()
         app.processEvents()
         item = list(w._active_items.values())[0]
+        bar = w.scroll.verticalScrollBar()
+        unlocked_separator_left = item._separator_left()
         assert item.dot.isVisible()
+        assert bar.isVisible()
+        assert w.scroll.verticalScrollBarPolicy() == Qt.ScrollBarAsNeeded
 
         w.set_locked(True)
         app.processEvents()
         assert not item.dot.isVisible()
+        assert item._separator_left() == item.stack.geometry().left()
+        assert item._separator_left() < unlocked_separator_left
         assert not w._inline_add_btn.isVisible()
         assert w.header.lock_btn.isVisible()
         assert w.header.lock_btn._locked == True
         assert not w.footer_btn.isVisible()
+        assert not bar.isVisible()
+        assert w.scroll.verticalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
 
         w.unlock()
         app.processEvents()
         assert item.dot.isVisible()
         assert w.header.lock_btn.isVisible()
         assert w.header.lock_btn._locked == False
+        assert bar.isVisible()
+        assert w.scroll.verticalScrollBarPolicy() == Qt.ScrollBarAsNeeded
 
 
 def test_click_lock_icon_toggles_lock_and_unlock(app):
