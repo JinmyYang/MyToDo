@@ -62,12 +62,12 @@ QLabel#titleLabel {{
 }}
 QPushButton {{ color: {txt.name()}; background: transparent; border: none; }}
 QPushButton#inlineAddBtn {{
-    color: rgba({ico.red()}, {ico.green()}, {ico.blue()}, 190);
+    color: rgba({ico.red()}, {ico.green()}, {ico.blue()}, 215);
     background: transparent;
     border: none;
     border-radius: 9px;
-    font-size: 17px;
-    font-weight: 500;
+    font-size: 20px;
+    font-weight: 600;
     text-align: left;
     padding: 5px 0 5px 16px;
 }}
@@ -241,6 +241,12 @@ class MainWindow(QWidget):
         self._settings_save_timer.setInterval(180)
         self._settings_save_timer.timeout.connect(self._flush_settings_save)
         QApplication.instance().aboutToQuit.connect(self._flush_settings_save)
+        self._dragged_task_id = None
+        self._task_drag_global_pos = None
+        self._task_drag_order_changed = False
+        self._task_drag_scroll_timer = QTimer(self)
+        self._task_drag_scroll_timer.setInterval(40)
+        self._task_drag_scroll_timer.timeout.connect(self._auto_scroll_task_drag)
 
         self.setWindowTitle("桌面便签")
         self.setFont(QFont(self.theme.font_family, 10))
@@ -291,7 +297,7 @@ class MainWindow(QWidget):
         # ---- 行内加号:放进列表里,始终紧跟最后一个任务 ----
         self._inline_add_btn = QPushButton("+")
         self._inline_add_btn.setObjectName("inlineAddBtn")
-        self._inline_add_btn.setFixedHeight(32)
+        self._inline_add_btn.setFixedHeight(36)
         self._inline_add_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self._inline_add_btn.setFocusPolicy(Qt.NoFocus)
         self._inline_add_btn.setToolTip("新建任务 (Ctrl+N)")
@@ -441,6 +447,9 @@ class MainWindow(QWidget):
         item.completed.connect(self.on_complete)
         item.text_changed.connect(self.on_text_changed)
         item.delete_requested.connect(self.on_delete)
+        item.drag_started.connect(self._on_task_drag_started)
+        item.drag_moved.connect(self._on_task_drag_moved)
+        item.drag_finished.connect(self._on_task_drag_finished)
         # 插到加号按钮之前(加号始终紧跟最后一个任务,其后才是末尾 stretch)
         if position is None:
             position = self.list_layout.count() - 2
@@ -503,6 +512,83 @@ class MainWindow(QWidget):
 
     def on_text_changed(self, task_id, text):
         self.store.update_text(task_id, text)
+
+    def _ordered_task_items(self):
+        return [
+            self.list_layout.itemAt(index).widget()
+            for index in range(self.list_layout.count())
+            if isinstance(self.list_layout.itemAt(index).widget(), TaskItem)
+        ]
+
+    def _on_task_drag_started(self, task_id, global_pos):
+        if self._locked or task_id not in self._active_items:
+            return
+        self._dragged_task_id = task_id
+        self._task_drag_global_pos = global_pos
+        self._task_drag_order_changed = False
+        self._task_drag_scroll_timer.start()
+
+    def _on_task_drag_moved(self, task_id, global_pos):
+        if task_id != self._dragged_task_id:
+            return
+        self._task_drag_global_pos = global_pos
+        self._reorder_dragged_task(global_pos)
+
+    def _reorder_dragged_task(self, global_pos):
+        dragged = self._active_items.get(self._dragged_task_id)
+        if dragged is None:
+            return
+        items = self._ordered_task_items()
+        if dragged not in items:
+            return
+
+        pointer_y = self.list_widget.mapFromGlobal(global_pos).y()
+        others = [item for item in items if item is not dragged]
+        target_index = len(others)
+        for index, item in enumerate(others):
+            if pointer_y < item.geometry().center().y():
+                target_index = index
+                break
+        if target_index == items.index(dragged):
+            return
+
+        self.list_layout.removeWidget(dragged)
+        self.list_layout.insertWidget(target_index, dragged)
+        self.list_layout.activate()
+        self._task_drag_order_changed = True
+
+    def _auto_scroll_task_drag(self):
+        if self._dragged_task_id is None or self._task_drag_global_pos is None:
+            self._task_drag_scroll_timer.stop()
+            return
+        viewport = self.scroll.viewport()
+        pos = viewport.mapFromGlobal(self._task_drag_global_pos)
+        margin = 28
+        delta = 0
+        if pos.y() < margin:
+            delta = -12
+        elif pos.y() > viewport.height() - margin:
+            delta = 12
+        if delta == 0:
+            return
+        bar = self.scroll.verticalScrollBar()
+        old_value = bar.value()
+        bar.setValue(old_value + delta)
+        if bar.value() != old_value:
+            self._reorder_dragged_task(self._task_drag_global_pos)
+
+    def _on_task_drag_finished(self, task_id):
+        if task_id != self._dragged_task_id:
+            return
+        self._task_drag_scroll_timer.stop()
+        if self._task_drag_order_changed:
+            ordered_items = self._ordered_task_items()
+            ordered_ids = [item.task.id for item in ordered_items]
+            self.store.reorder_active(ordered_ids)
+            self._active_items = {item.task.id: item for item in ordered_items}
+        self._dragged_task_id = None
+        self._task_drag_global_pos = None
+        self._task_drag_order_changed = False
 
     def on_delete(self, task_id, permanent=False):
         if permanent:

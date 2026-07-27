@@ -190,6 +190,8 @@ def test_macos_style_header_structure(app):
 
         assert w.header.title_label.text() == "JUST DO IT."
         assert w.header.lock_btn.width() == 28
+        assert w._inline_add_btn.height() == 36
+        assert "font-size: 20px" in w.container.styleSheet()
 
 
 def test_task_rows_stay_compact_when_window_grows(app):
@@ -232,6 +234,8 @@ def test_edit_height_follows_task_text(app):
         app.processEvents()
         assert item.edit.height() > single_line_height
         assert item.edit.height() == item.stack.height()
+        assert item.edit.verticalScrollBar().maximum() == 0
+        assert item.edit.verticalScrollBar().value() == 0
 
         item._on_editing_finished()
         app.processEvents()
@@ -243,6 +247,8 @@ def test_edit_height_follows_task_text(app):
         assert item.edit.toPlainText() == "第一行\n第二行\n第三行"
         assert item.edit.height() > single_line_height
         assert not item.edit.textCursor().hasSelection()
+        assert item.edit.verticalScrollBar().maximum() == 0
+        assert item.edit.verticalScrollBar().value() == 0
 
 
 def test_long_text_stays_visible_after_reopening_and_resizing(app):
@@ -272,6 +278,63 @@ def test_long_text_stays_visible_after_reopening_and_resizing(app):
         assert item.edit.toPlainText() == text
         assert item.edit.textCursor().position() == len(text)
         assert item.edit.height() >= first_height
+        assert item.edit.verticalScrollBar().maximum() == 0
+        assert item.edit.verticalScrollBar().value() == 0
+
+
+def test_long_press_drag_reorders_tasks_and_persists(app):
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        path = root / "tasks.json"
+        store = TaskStore(path)
+        first = store.add("第一")
+        second = store.add("第二")
+        third = store.add("第三")
+        w = MainWindow(store, settings_path=root / "settings.json")
+        w.show()
+        app.processEvents()
+
+        item = w._active_items[first.id]
+        target = w._active_items[third.id]
+        press_global = item.label.mapToGlobal(item.label.rect().center())
+        target_global = target.mapToGlobal(QPoint(target.width() // 2, target.height() + 8))
+        press = QMouseEvent(
+            QEvent.MouseButtonPress,
+            QPointF(item.label.rect().center()),
+            QPointF(press_global),
+            Qt.LeftButton,
+            Qt.LeftButton,
+            Qt.NoModifier,
+        )
+        assert item.eventFilter(item.label, press) is True
+        assert item._dragging is False
+        QTest.qWait(item.LONG_PRESS_MS + 30)
+        assert item._dragging is True
+
+        move = QMouseEvent(
+            QEvent.MouseMove,
+            QPointF(item.label.mapFromGlobal(target_global)),
+            QPointF(target_global),
+            Qt.NoButton,
+            Qt.LeftButton,
+            Qt.NoModifier,
+        )
+        assert item.eventFilter(item.label, move) is True
+        app.processEvents()
+        assert [row.task.id for row in w._ordered_task_items()] == [second.id, third.id, first.id]
+
+        release = QMouseEvent(
+            QEvent.MouseButtonRelease,
+            QPointF(item.label.mapFromGlobal(target_global)),
+            QPointF(target_global),
+            Qt.LeftButton,
+            Qt.NoButton,
+            Qt.NoModifier,
+        )
+        assert item.eventFilter(item.label, release) is True
+        app.processEvents()
+        assert item._dragging is False
+        assert [task.id for task in TaskStore(path).active_tasks()] == [second.id, third.id, first.id]
 
 
 def test_edge_hover_sets_resize_cursor(app):

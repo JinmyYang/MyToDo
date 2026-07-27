@@ -149,6 +149,25 @@ class TaskStore:
             t.text = text
             self.save()
 
+    def reorder_active(self, task_ids):
+        """按给定 ID 顺序重排活跃任务，并保留历史任务的相对位置。"""
+        active = self.active_tasks()
+        current_ids = [task.id for task in active]
+        ordered_ids = list(task_ids)
+        if len(ordered_ids) != len(current_ids) or set(ordered_ids) != set(current_ids):
+            return False
+        if ordered_ids == current_ids:
+            return False
+
+        active_by_id = {task.id: task for task in active}
+        reordered = iter(active_by_id[task_id] for task_id in ordered_ids)
+        self.tasks = [
+            next(reordered) if not task.completed and not task.deleted else task
+            for task in self.tasks
+        ]
+        self.save()
+        return True
+
     def complete(self, task_id):
         t = self.get(task_id)
         if t is not None:

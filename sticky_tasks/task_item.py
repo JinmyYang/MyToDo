@@ -2,10 +2,13 @@
 
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QPushButton, QLabel, QStackedWidget,
-    QMenu, QFrame, QPlainTextEdit, QSizePolicy,
+    QMenu, QFrame, QPlainTextEdit, QSizePolicy, QApplication,
 )
-from PySide6.QtCore import Signal, Qt, QEvent, QTimer, QRect, QPointF
-from PySide6.QtGui import QCursor, QTextCursor, QPainter, QColor, QPen, QFont
+from PySide6.QtCore import Signal, Qt, QEvent, QTimer, QPoint, QPointF
+from PySide6.QtGui import (
+    QCursor, QTextCursor, QTextLayout, QTextOption, QPainter, QColor, QPen,
+    QFont,
+)
 
 from .app_settings import Theme
 
@@ -91,8 +94,12 @@ class TaskItem(QWidget):
     completed = Signal(str)
     text_changed = Signal(str, str)
     delete_requested = Signal(str)
+    drag_started = Signal(str, QPoint)
+    drag_moved = Signal(str, QPoint)
+    drag_finished = Signal(str)
 
     _LABEL_PAGE, _EDIT_PAGE = 0, 1
+    LONG_PRESS_MS = 450
 
     def __init__(self, task):
         super().__init__()
@@ -100,13 +107,21 @@ class TaskItem(QWidget):
         self._locked = False
         self._hovered = False
         self._fit_pending = False
+        self._reset_edit_scroll_pending = False
+        self._press_global_pos = None
+        self._dragging = False
         self._sep_color = QColor(255, 255, 255, 8)
         self._hover_color = QColor(255, 255, 255, 6)
+        self._drag_color = QColor(94, 160, 255, 110)
         self._text_color = QColor("#e9e9ef")
         self._font_family = "Segoe UI Variable"
         self._font_size = 13
         self.setMouseTracking(True)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        self._long_press_timer = QTimer(self)
+        self._long_press_timer.setSingleShot(True)
+        self._long_press_timer.setInterval(self.LONG_PRESS_MS)
+        self._long_press_timer.timeout.connect(self._activate_drag)
 
         lay = QHBoxLayout(self)
         self._layout = lay
@@ -179,7 +194,15 @@ class TaskItem(QWidget):
         super().paintEvent(event)
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        if self._hovered and self.stack.currentIndex() == self._LABEL_PAGE:
+        if self._dragging:
+            fill = QColor(
+                self._drag_color.red(), self._drag_color.green(),
+                self._drag_color.blue(), 34,
+            )
+            p.setPen(QPen(self._drag_color, 1))
+            p.setBrush(fill)
+            p.drawRoundedRect(self.rect().adjusted(4, 1, -4, -1), 9, 9)
+        elif self._hovered and self.stack.currentIndex() == self._LABEL_PAGE:
             p.setPen(Qt.NoPen)
             p.setBrush(self._hover_color)
             p.drawRoundedRect(self.rect().adjusted(4, 1, -4, 0), 9, 9)
@@ -201,6 +224,10 @@ class TaskItem(QWidget):
     def set_theme(self, theme: Theme):
         self._sep_color = theme.sep_color
         self._hover_color = theme.highlight_color
+        self._drag_color = QColor(
+            theme.accent_color.red(), theme.accent_color.green(),
+            theme.accent_color.blue(), 110,
+        )
         self._text_color = theme.text_color
         self._font_family = theme.font_family
         self._font_size = theme.font_size
@@ -242,6 +269,11 @@ class TaskItem(QWidget):
         """进入编辑态(右键菜单/新建任务/测试均调用)。"""
         if self._locked:
             return
+        if self._dragging:
+            self._finish_drag_gesture()
+        else:
+            self._cancel_drag_gesture()
+        self._reset_edit_scroll_pending = True
         self.stack.setCurrentIndex(self._EDIT_PAGE)
         self.edit.setPlainText(self.task.text)
         self.edit.setFocus()
@@ -269,6 +301,7 @@ class TaskItem(QWidget):
             self._exit_edit()
 
     def _exit_edit(self):
+        self._reset_edit_scroll_pending = False
         self.stack.setCurrentIndex(self._LABEL_PAGE)
         self.stack.setMinimumHeight(0)
         self.stack.setMaximumHeight(16777215)
@@ -300,18 +333,19 @@ class TaskItem(QWidget):
         line_h = self.edit.fontMetrics().lineSpacing()
         m = self._layout.contentsMargins()
         w = self.width() - m.left() - m.right() - self._layout.spacing() - self.dot.width()
-        text_width = max(self.edit.viewport().width() - 2, self.stack.width() - 14, w - 14, 40)
+        viewport_w = self.edit.viewport().width()
+        if viewport_w < 40:
+            viewport_w = max(self.stack.width() - 16, w - 16, 40)
+        document_margin = self.edit.document().documentMargin()
+        text_width = max(viewport_w - int(document_margin * 2), 40)
         self.edit.setMinimumHeight(0)
         self.edit.setMaximumHeight(16777215)
-        flags = Qt.TextWordWrap | Qt.TextWrapAnywhere
-        text = self.edit.toPlainText() or " "
-        wrapped_h = self.edit.fontMetrics().boundingRect(
-            QRect(0, 0, text_width, 0), flags, text,
-        ).height()
-        doc_h = self.edit.document().size().height()
-        block_count = self.edit.document().blockCount()
-        text_h = max(wrapped_h, int(doc_h), block_count * line_h)
-        new_h = max(text_h + 14, line_h + 14)
+        text_h = self._wrapped_text_height(text_width)
+        chrome_h = max(12, self.edit.height() - self.edit.viewport().height())
+        new_h = max(
+            text_h + int(document_margin * 2) + chrome_h,
+            line_h + int(document_margin * 2) + chrome_h,
+        ) + 1
         row_h = max(new_h, self.dot.height()) + m.top() + m.bottom()
         self.edit.setMinimumHeight(new_h)
         self.edit.setMaximumHeight(new_h)
@@ -320,6 +354,25 @@ class TaskItem(QWidget):
         self.setMinimumHeight(row_h)
         self.setMaximumHeight(row_h)
         self.updateGeometry()
+
+    def _wrapped_text_height(self, text_width):
+        """按编辑器实际字体和换行规则计算所有可视文本行高度。"""
+        option = QTextOption()
+        option.setWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        line_h = self.edit.fontMetrics().lineSpacing()
+        total = 0
+        for block_text in self.edit.toPlainText().split("\n"):
+            layout = QTextLayout(block_text or " ", self.edit.font())
+            layout.setTextOption(option)
+            layout.beginLayout()
+            while True:
+                line = layout.createLine()
+                if not line.isValid():
+                    break
+                line.setLineWidth(text_width)
+                total += max(line_h, int(line.height() + 0.999))
+            layout.endLayout()
+        return max(total, line_h)
 
     def _schedule_fit_height(self):
         if self._fit_pending:
@@ -331,6 +384,9 @@ class TaskItem(QWidget):
         self._fit_pending = False
         if self.stack.currentIndex() == self._EDIT_PAGE:
             self._fit_edit_height()
+            if self._reset_edit_scroll_pending:
+                self.edit.verticalScrollBar().setValue(0)
+                self._reset_edit_scroll_pending = False
         else:
             self._fit_label_height()
 
@@ -341,13 +397,33 @@ class TaskItem(QWidget):
 
     def eventFilter(self, obj, event):
         if obj is self.label:
-            if (
-                event.type() == QEvent.MouseButtonDblClick
-                and event.button() == Qt.LeftButton
-                and self.label.rect().contains(event.position().toPoint())
-            ):
+            et = event.type()
+            if et == QEvent.MouseButtonDblClick and event.button() == Qt.LeftButton:
+                self._cancel_drag_gesture()
                 self.start_edit()
                 return True
+            if (
+                et == QEvent.MouseButtonPress
+                and event.button() == Qt.LeftButton
+                and not self._locked
+                and self.stack.currentIndex() == self._LABEL_PAGE
+            ):
+                self._press_global_pos = event.globalPosition().toPoint()
+                self._long_press_timer.start()
+                return True
+            if et == QEvent.MouseMove and self._press_global_pos is not None:
+                global_pos = event.globalPosition().toPoint()
+                if self._dragging and event.buttons() & Qt.LeftButton:
+                    self.drag_moved.emit(self.task.id, global_pos)
+                    return True
+                distance = (global_pos - self._press_global_pos).manhattanLength()
+                if distance > QApplication.startDragDistance():
+                    self._cancel_drag_gesture()
+                return True
+            if et == QEvent.MouseButtonRelease and event.button() == Qt.LeftButton:
+                if self._press_global_pos is not None or self._dragging:
+                    self._finish_drag_gesture()
+                    return True
         if obj is getattr(self, "edit", None):
             if event.type() == QEvent.FocusOut:
                 self._on_editing_finished()
@@ -362,6 +438,27 @@ class TaskItem(QWidget):
                     self._exit_edit()
                     return True
         return super().eventFilter(obj, event)
+
+    def _activate_drag(self):
+        if self._press_global_pos is None or self._locked:
+            return
+        self._dragging = True
+        self.label.setCursor(QCursor(Qt.ClosedHandCursor))
+        self.drag_started.emit(self.task.id, self._press_global_pos)
+        self.update()
+
+    def _cancel_drag_gesture(self):
+        self._long_press_timer.stop()
+        self._press_global_pos = None
+
+    def _finish_drag_gesture(self):
+        was_dragging = self._dragging
+        self._dragging = False
+        self._cancel_drag_gesture()
+        self.label.setCursor(QCursor(Qt.ArrowCursor if self._locked else Qt.IBeamCursor))
+        self.update()
+        if was_dragging:
+            self.drag_finished.emit(self.task.id)
 
     # ---- 右键菜单(仅展示态;编辑态让 QPlainTextEdit 自带菜单处理)----
     def contextMenuEvent(self, event):
@@ -401,6 +498,10 @@ class TaskItem(QWidget):
 
     # ---- 锁定 ----
     def set_locked(self, locked):
+        if locked and self._dragging:
+            self._finish_drag_gesture()
+        else:
+            self._cancel_drag_gesture()
         self._locked = locked
         self.dot.setVisible(not locked)
         self.label.setCursor(QCursor(Qt.ArrowCursor if locked else Qt.IBeamCursor))

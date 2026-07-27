@@ -69,6 +69,23 @@ def test_update_text(tmp_path):
     assert store.get(t.id).text == "新文本"
 
 
+def test_reorder_active_tasks_persists_and_preserves_history_slots(tmp_path):
+    path = tmp_path / "tasks.json"
+    store = TaskStore(path)
+    first = store.add("第一")
+    completed = store.add("已完成")
+    second = store.add("第二")
+    third = store.add("第三")
+    store.complete(completed.id)
+
+    assert store.reorder_active([third.id, first.id, second.id]) is True
+    assert [task.id for task in store.tasks] == [third.id, completed.id, first.id, second.id]
+
+    loaded = TaskStore(path)
+    assert [task.id for task in loaded.active_tasks()] == [third.id, first.id, second.id]
+    assert loaded.reorder_active([third.id, first.id]) is False
+
+
 def test_delete(tmp_path):
     store = TaskStore(tmp_path / "tasks.json")
     t = store.add("任务")
