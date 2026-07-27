@@ -102,9 +102,18 @@ QFrame#footerBar {{
 QScrollArea#listScroll {{ border: none; background: transparent; }}
 QScrollArea#listScroll viewport {{ background: transparent; }}
 QWidget#listWidget {{ background: transparent; }}
-QScrollBar:vertical {{ background: transparent; width: 5px; margin: 6px 3px 6px 0; }}
-QScrollBar::handle:vertical {{ background: rgba({sb.red()},{sb.green()},{sb.blue()},{sb.alpha()}); border-radius: 2px; min-height: 24px; }}
-QScrollBar::handle:vertical:hover {{ background: rgba({sbh.red()},{sbh.green()},{sbh.blue()},{sbh.alpha()}); }}
+QScrollBar:vertical {{ background: transparent; width: 9px; margin: 6px 0; }}
+QScrollBar::handle:vertical {{
+    background: rgba({sb.red()},{sb.green()},{sb.blue()},{sb.alpha()});
+    border-radius: 2px;
+    min-height: 24px;
+    margin: 0 3px;
+}}
+QScrollBar::handle:vertical:hover {{
+    background: rgba({sbh.red()},{sbh.green()},{sbh.blue()},{sbh.alpha()});
+    border-radius: 3px;
+    margin: 0 1px;
+}}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
 """

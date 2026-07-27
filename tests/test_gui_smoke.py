@@ -13,14 +13,27 @@ from PySide6.QtGui import QMouseEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel
 
-from sticky_tasks.main_window import MainWindow
+from sticky_tasks.main_window import MainWindow, build_qss
 from sticky_tasks.app_settings import AppSettings
+from sticky_tasks.completed_panel import build_panel_qss
 from sticky_tasks.task_store import TaskStore
 
 
 @pytest.fixture
 def app():
     return QApplication.instance() or QApplication(sys.argv)
+
+
+def test_task_scrollbars_share_wider_hover_handle():
+    theme = AppSettings().to_theme()
+    main_qss = build_qss(theme)
+    completed_qss = build_panel_qss(theme)
+
+    for qss in (main_qss, completed_qss):
+        assert "width: 9px" in qss
+        assert "margin: 0 3px" in qss
+        assert "QScrollBar::handle:vertical:hover" in qss
+        assert "margin: 0 1px" in qss
 
 
 def test_core_flow(app):

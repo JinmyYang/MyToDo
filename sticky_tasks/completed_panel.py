@@ -41,8 +41,18 @@ QPushButton#restoreBtn:hover {
 QScrollArea { border: none; background: transparent; }
 QScrollArea viewport { background: transparent; }
 QWidget#bodyContainer { background: transparent; }
-QScrollBar:vertical { background: transparent; width: 5px; margin: 2px; }
-QScrollBar::handle:vertical { background: rgba(255,255,255,36); border-radius: 2px; min-height: 20px; }
+QScrollBar:vertical { background: transparent; width: 9px; margin: 2px 0; }
+QScrollBar::handle:vertical {
+    background: rgba(255,255,255,36);
+    border-radius: 2px;
+    min-height: 20px;
+    margin: 0 3px;
+}
+QScrollBar::handle:vertical:hover {
+    background: rgba(255,255,255,68);
+    border-radius: 3px;
+    margin: 0 1px;
+}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 """
 
@@ -53,6 +63,7 @@ def build_panel_qss(t: Theme) -> str:
     ico = t.icon_color
     acc = t.accent_color
     sb = t.scrollbar_color
+    sbh = t.scrollbar_hover_color
     return f"""
 CompletedPanel {{ background: transparent; }}
 QFrame#completedItem {{
@@ -90,8 +101,18 @@ QPushButton#restoreBtn:hover {{
 QScrollArea {{ border: none; background: transparent; }}
 QScrollArea viewport {{ background: transparent; }}
 QWidget#bodyContainer {{ background: transparent; }}
-QScrollBar:vertical {{ background: transparent; width: 5px; margin: 2px; }}
-QScrollBar::handle:vertical {{ background: rgba({sb.red()},{sb.green()},{sb.blue()},{sb.alpha()}); border-radius: 2px; min-height: 20px; }}
+QScrollBar:vertical {{ background: transparent; width: 9px; margin: 2px 0; }}
+QScrollBar::handle:vertical {{
+    background: rgba({sb.red()},{sb.green()},{sb.blue()},{sb.alpha()});
+    border-radius: 2px;
+    min-height: 20px;
+    margin: 0 3px;
+}}
+QScrollBar::handle:vertical:hover {{
+    background: rgba({sbh.red()},{sbh.green()},{sbh.blue()},{sbh.alpha()});
+    border-radius: 3px;
+    margin: 0 1px;
+}}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 """
 
