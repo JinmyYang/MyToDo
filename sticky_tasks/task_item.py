@@ -342,7 +342,7 @@ class TaskItem(QWidget):
     def eventFilter(self, obj, event):
         if obj is self.label:
             if (
-                event.type() == QEvent.MouseButtonRelease
+                event.type() == QEvent.MouseButtonDblClick
                 and event.button() == Qt.LeftButton
                 and self.label.rect().contains(event.position().toPoint())
             ):

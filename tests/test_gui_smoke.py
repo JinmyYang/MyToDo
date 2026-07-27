@@ -436,7 +436,7 @@ def test_font_settings_apply_and_flush_on_immediate_close(app):
         assert loaded.font_size == 16
 
 
-def test_single_click_task_text_starts_edit_unless_locked(app):
+def test_double_click_task_text_starts_edit_unless_locked(app):
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         store = TaskStore(root / "tasks.json")
@@ -448,11 +448,15 @@ def test_single_click_task_text_starts_edit_unless_locked(app):
 
         QTest.mouseClick(item.label, Qt.LeftButton)
         app.processEvents()
+        assert item.stack.currentIndex() == item._LABEL_PAGE
+
+        QTest.mouseDClick(item.label, Qt.LeftButton)
+        app.processEvents()
         assert item.stack.currentIndex() == item._EDIT_PAGE
 
         item._exit_edit()
         w.set_locked(True)
-        QTest.mouseClick(item.label, Qt.LeftButton)
+        QTest.mouseDClick(item.label, Qt.LeftButton)
         app.processEvents()
         assert item.stack.currentIndex() == item._LABEL_PAGE
 
