@@ -32,7 +32,8 @@ python -m pip install -r requirements.txt
 python main.py
 ```
 
-首次运行会在 `~/.sticky_tasks/tasks.json` 创建数据文件。
+首次运行会在软件所在目录的 `.sticky_tasks/tasks.json` 创建数据文件。
+如果用户目录中存在旧数据，程序会在新位置没有对应文件时自动复制过去。
 
 ## 使用
 
@@ -71,7 +72,7 @@ QT_QPA_PLATFORM=offscreen python -m pytest tests/test_gui_smoke.py -v
 ## 技术栈
 
 - **Python 3.13** + **PySide6 6.11**(Qt for Python)
-- 数据持久化:JSON(`~/.sticky_tasks/tasks.json`)
+- 数据持久化:JSON(`软件目录/.sticky_tasks/tasks.json`)
 - 测试:pytest
 
 ## 目录结构

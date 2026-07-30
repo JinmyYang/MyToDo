@@ -20,7 +20,7 @@ project0711 — 一个**桌面任务便签软件**(本地运行,Windows 自用)�
 
 - 语言: Python 3.13
 - GUI 框架: PySide6 (Qt for Python) 6.11
-- 数据持久化: JSON 文件(存于 `~/.sticky_tasks/tasks.json`)
+- 数据持久化: JSON 文件(存于软件目录下的 `.sticky_tasks/tasks.json`)
 - 测试: pytest
 - 包管理: pip + requirements.txt
 

@@ -19,6 +19,7 @@ from PySide6.QtGui import (
 from .task_store import TaskStore
 from .task_item import TaskItem
 from .completed_panel import CompletedPanel
+from .app_paths import SETTINGS_FILE
 from .app_settings import AppSettings, Theme
 from .settings_dialog import SettingsWindow
 from .history_window import HistoryWindow
@@ -195,10 +196,10 @@ class HeaderBar(QFrame):
         self._window = window
 
         hl = QHBoxLayout(self)
-        hl.setContentsMargins(16, 12, 12, 8)
+        hl.setContentsMargins(16, 6, 12, 6)
         hl.setSpacing(7)
         # 固定高度:锁头隐藏(锁定+鼠标移出)时顶部栏不塌缩
-        self.setFixedHeight(12 + 28 + 8)
+        self.setFixedHeight(6 + 28 + 6)
 
         self.title_label = QLabel("JUST DO IT.")
         self.title_label.setObjectName("titleLabel")
@@ -220,7 +221,7 @@ class MainWindow(QWidget):
     def __init__(self, store: TaskStore, settings_path: Path = None):
         super().__init__()
         self.store = store
-        self._settings_path = settings_path or (Path.home() / ".sticky_tasks" / "settings.json")
+        self._settings_path = settings_path or SETTINGS_FILE
         self.settings = AppSettings.load(self._settings_path)
         self.theme = self.settings.to_theme()
         self._drag_pos = None

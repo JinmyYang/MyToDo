@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QCursor, QFontDatabase
 
-from .app_settings import AppSettings
+from .app_settings import AppSettings, MIN_BG_OPACITY
 
 WINDOW_QSS = """
 SettingsWindow {
@@ -198,7 +198,7 @@ class SettingsWindow(QWidget):
         root.addWidget(self._row_label("背景透明度"))
         op_row = QHBoxLayout()
         self._op_slider = QSlider(Qt.Horizontal)
-        self._op_slider.setRange(60, 255)
+        self._op_slider.setRange(MIN_BG_OPACITY, 255)
         self._op_slider.setValue(self._settings.bg_opacity)
         op_row.addWidget(self._op_slider, 1)
         self._op_label = QLabel(f"{int(self._settings.bg_opacity / 255 * 100)}%")

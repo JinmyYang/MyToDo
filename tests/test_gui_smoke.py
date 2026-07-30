@@ -148,6 +148,9 @@ def test_lock_hides_controls_and_unlock_restores(app):
         assert not item.dot.isVisible()
         assert item._separator_left() == item.stack.geometry().left()
         assert item._separator_left() < unlocked_separator_left
+        stack_left = item.stack.mapTo(w, QPoint()).x()
+        stack_right = stack_left + item.stack.width()
+        assert stack_left == w.width() - stack_right
         assert not w._inline_add_btn.isVisible()
         assert w.header.lock_btn.isVisible()
         assert w.header.lock_btn._locked == True
@@ -200,6 +203,7 @@ def test_macos_style_header_structure(app):
         w = MainWindow(store)
 
         assert w.header.title_label.text() == "JUST DO IT."
+        assert w.header.height() == 40
         assert w.header.lock_btn.width() == 28
         assert w._inline_add_btn.height() == 36
         assert "font-size: 20px" in w.container.styleSheet()

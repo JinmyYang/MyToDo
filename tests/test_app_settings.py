@@ -10,7 +10,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFontDatabase
 from PySide6.QtWidgets import QApplication, QColorDialog
 
-from sticky_tasks.app_settings import AppSettings
+from sticky_tasks.app_settings import AppSettings, MIN_BG_OPACITY
 from sticky_tasks.settings_dialog import SettingsWindow
 
 
@@ -46,6 +46,25 @@ def test_window_geometry_persists_roundtrip(tmp_path):
     loaded = AppSettings.load(path)
     assert (loaded.window_x, loaded.window_y) == (120, 80)
     assert (loaded.window_width, loaded.window_height) == (360, 520)
+
+
+def test_background_opacity_starts_at_one_percent(app, tmp_path):
+    path = tmp_path / "settings.json"
+    path.write_text(
+        '{"bg_opacity": 0, "custom_preset": {'
+        '"bg": "#25262c", "text": "#e9e9ef", "font": "Arial", '
+        '"size": 13, "opacity": 0}}',
+        encoding="utf-8",
+    )
+
+    loaded = AppSettings.load(path)
+    window = SettingsWindow(loaded)
+
+    assert loaded.bg_opacity == MIN_BG_OPACITY
+    assert loaded.custom_preset["opacity"] == MIN_BG_OPACITY
+    assert window._op_slider.minimum() == MIN_BG_OPACITY
+    window._op_slider.setValue(window._op_slider.minimum())
+    assert window._op_label.text() == "1%"
 
 
 def test_font_combo_updates_family_without_system_dialog(app):

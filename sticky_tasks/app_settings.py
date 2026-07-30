@@ -1,6 +1,6 @@
 """应用设置:用户自定义外观 + 自动对比色派生。
 
-持久化到 ~/.sticky_tasks/settings.json,与 tasks.json 同目录。
+持久化到软件目录下的 .sticky_tasks/settings.json,与 tasks.json 同目录。
 """
 
 from __future__ import annotations
@@ -12,6 +12,9 @@ from pathlib import Path
 from PySide6.QtGui import QColor
 
 from .json_io import atomic_write_text
+
+
+MIN_BG_OPACITY = 3  # 约 1%（内部透明度范围为 0~255）
 
 
 def _luminance(c: QColor) -> float:
@@ -165,7 +168,7 @@ class AppSettings:
                     "text": QColor(preset["text"]).name(),
                     "font": preset["font"],
                     "size": max(9, min(24, preset["size"])),
-                    "opacity": max(60, min(255, preset["opacity"])),
+                    "opacity": max(MIN_BG_OPACITY, min(255, preset["opacity"])),
                 }
         # 校验颜色合法性
         if not QColor(s.bg_color).isValid():
@@ -173,7 +176,7 @@ class AppSettings:
         if not QColor(s.text_color).isValid():
             s.text_color = "#e9e9ef"
         s.font_size = max(9, min(24, s.font_size))
-        s.bg_opacity = max(60, min(255, s.bg_opacity))
+        s.bg_opacity = max(MIN_BG_OPACITY, min(255, s.bg_opacity))
         if s.window_width is not None:
             s.window_width = max(220, s.window_width)
         if s.window_height is not None:
