@@ -27,9 +27,8 @@ from .history_window import HistoryWindow
 def build_qss(t: Theme) -> str:
     """根据主题动态生成 QSS。"""
     bg = t.bg_color
-    # 背景渐变:顶部稍亮,底部稍暗
-    top = QColor(min(bg.red() + 12, 255), min(bg.green() + 12, 255), min(bg.blue() + 12, 255))
-    bot = QColor(max(bg.red() - 10, 0), max(bg.green() - 10, 0), max(bg.blue() - 10, 0))
+    # 背景用纯色:垂直渐变的色差只有约 22 个灰阶却要铺满整个窗口高度,
+    # 8bit 量化下会出现一条条水平色带,中等透明度时尤其明显。
     op = t.bg_opacity
     sep = t.sep_color
     sb = t.scrollbar_color
@@ -42,9 +41,7 @@ def build_qss(t: Theme) -> str:
 
     return f"""
 QFrame#container {{
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-        stop:0 rgba({top.red()}, {top.green()}, {top.blue()}, {op}),
-        stop:1 rgba({bot.red()}, {bot.green()}, {bot.blue()}, {min(int(op * 1.025), 255)}));
+    background: rgba({bg.red()}, {bg.green()}, {bg.blue()}, {op});
     border: none;
     border-radius: 8px;
 }}
@@ -482,8 +479,9 @@ class MainWindow(QWidget):
     def _paint_edge_fade(self, p):
         """容器边缘向外逐渐虚化(羽化),替代硬阴影。
 
-        从容器边缘向外画多层同心圆角矩形,越往外 alpha 越低,
-        形成背景色→透明的柔和过渡,让窗口边缘自然融入桌面。
+        从容器边缘向外画多层同心圆角矩形的"环带"(外扩矩形减去容器矩形),
+        越往外 alpha 越低,形成背景色→透明的柔和过渡。
+        环带画法保证容器内部不被叠加任何颜色,透明度与滑杆值一致。
         """
         cr = QRectF(self.container.geometry())
         radius = 8.0
@@ -493,14 +491,18 @@ class MainWindow(QWidget):
         # 羽化强度随背景透明度等比缩放:低透明度时不再残留一圈可见薄雾
         fade_strength = self.theme.bg_opacity / 255.0
         p.setPen(Qt.NoPen)
+        inner = QPainterPath()
+        inner.addRoundedRect(cr, radius, radius)
         for i in range(layers, 0, -1):
             expand = fade * i / layers
             # 越贴近容器边缘越不透明,最外层趋近全透明
             alpha = int(56 * fade_strength * (1.0 - (i - 1) / layers))
             rect = cr.adjusted(-expand, -expand, expand, expand)
             r = radius + expand
+            ring = QPainterPath()
+            ring.addRoundedRect(rect, r, r)
             p.setBrush(QColor(base.red(), base.green(), base.blue(), alpha))
-            p.drawRoundedRect(rect, r, r)
+            p.drawPath(ring.subtracted(inner))  # 只画容器外的那圈环
 
     # ---- 加载 ----
     def _update_empty_hint(self):
