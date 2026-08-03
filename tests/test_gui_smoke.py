@@ -297,6 +297,57 @@ def test_long_text_stays_visible_after_reopening_and_resizing(app):
         assert item.edit.verticalScrollBar().value() == 0
 
 
+def test_unbreakable_long_string_wraps_and_does_not_stretch_window(app):
+    """连续无空格长串(如纯数字)应换行显示,且不把任务行撑到内容宽度。
+
+    历史 bug 1:QLabel.wordWrap 只在词边界换行,纯数字/无空格长串没有
+    断行点,minimumSizeHint 返回整行宽度,把任务行和窗口撑爆。
+    修复:展示文本经 _wrap_for_label 在每个字符后注入零宽空格(U+200B)
+    提供断行点;label 水平方向用 QSizePolicy.Ignored,宽度不参与布局。
+    store 里的文本始终是原始内容,不含零宽空格。
+    """
+    with tempfile.TemporaryDirectory() as d:
+        store = TaskStore(Path(d) / "tasks.json")
+        task = store.add("1" * 364)
+        store.add("正常任务")
+        w = MainWindow(store)
+        w.resize(320, 460)
+        w.show()
+        for _ in range(5):
+            app.processEvents()
+
+        item = w._active_items[task.id]
+        # 数字长串确实换行了:高度超过单行行高
+        assert item.label.height() > item.label.fontMetrics().lineSpacing() + 1
+        # 任务行宽度受窗口约束,不被长串撑开
+        assert item.width() <= w.width()
+        assert item.stack.width() <= w.width()
+        # 行高足够容纳全部换行后的文本
+        assert item.label.height() >= item.label.heightForWidth(item.label.width())
+
+        # 缩窄窗口后约束依然成立,且换行更多(高度增加)
+        h_before = item.label.height()
+        w.resize(220, w.height())
+        for _ in range(5):
+            app.processEvents()
+        assert item.stack.width() <= w.width()
+        assert item.label.height() > h_before
+
+        # store 不被零宽空格污染
+        assert "​" not in store.get(task.id).text
+
+        # 重开后同样成立
+        store2 = TaskStore(Path(d) / "tasks.json")
+        w2 = MainWindow(store2)
+        w2.resize(320, 460)
+        w2.show()
+        for _ in range(5):
+            app.processEvents()
+        item2 = w2._active_items[task.id]
+        assert item2.stack.width() <= w2.width()
+        assert item2.label.height() > item2.label.fontMetrics().lineSpacing() + 1
+
+
 def test_long_press_drag_reorders_tasks_and_persists(app):
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
@@ -449,7 +500,45 @@ def test_completed_text_is_always_plain_text(app):
         label = row.findChild(QLabel)
 
         assert label.textFormat() == Qt.PlainText
-        assert label.text() == "<b>字面标签</b>"
+        # label 存的是注入零宽空格的展示文本,去掉 ZWSP 后应还原原始文本
+        assert label.text().replace("​", "") == "<b>字面标签</b>"
+        # store 里始终是原始文本,不含零宽空格
+        assert "​" not in store.get(task.id).text
+
+
+def test_completed_panel_wraps_long_unbreakable_text(app):
+    """已完成面板的连续数字/无空格长串也能换行显示。
+
+    与主列表同源 bug:QLabel.wordWrap 只在词边界换行。已完成行同样
+    注入零宽空格提供断行点,label 水平方向 Ignored 防撑宽。
+    """
+    with tempfile.TemporaryDirectory() as d:
+        store = TaskStore(Path(d) / "tasks.json")
+        task = store.add("2" * 200)
+        store.complete(task.id)
+        store.add("正常任务")
+        w = MainWindow(store, settings_path=Path(d) / "settings.json")
+        w.resize(320, 460)
+        w.show()
+        for _ in range(5):
+            app.processEvents()
+
+        # 展开已完成面板(否则面板隐藏态宽度是残留值,断言无意义)
+        w.toggle_completed()
+        for _ in range(5):
+            app.processEvents()
+
+        row = w.completed_panel._row_for[task.id]
+        label = row.findChild(QLabel)
+        line_h = label.fontMetrics().lineSpacing()
+        # 数字长串确实换行了
+        assert label.height() > line_h + 1
+        # 行没有被撑到内容宽度
+        assert row.width() <= w.width()
+        # content_height 能反映完整换行后的内容高度
+        assert w.completed_panel.content_height() > line_h * 2
+        # store 不被零宽空格污染
+        assert "​" not in store.get(task.id).text
 
 
 def test_collapsing_completed_panel_keeps_manual_height_change(app):

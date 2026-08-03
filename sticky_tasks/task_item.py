@@ -12,6 +12,23 @@ from PySide6.QtGui import (
 
 from .app_settings import Theme
 
+ZWSP = "​"  # 零宽空格 U+200B,提供 QLabel 任意字符处的断行点
+
+
+def wrap_for_label(text):
+    """在文本的每个字符后插入零宽空格(U+200B),作为 QLabel 的断行点。
+
+    QLabel.wordWrap 只在词边界换行;连续数字/英文等无空格长串没有
+    断行点,会被当成一个词不换行、横向溢出。零宽空格提供"任意字符处
+    可断行"的断点,但它零宽,渲染完全不可见,复制文本也不受影响。
+    仅用于展示用的 label;store 里始终存原始文本。
+    """
+    # 跳过空白字符:空格/制表符本身就是断行点,避免在其后再插 ZWSP。
+    return ZWSP.join(
+        ch if ch.isspace() else ch + ZWSP
+        for ch in text
+    )
+
 
 
 
@@ -142,13 +159,18 @@ class TaskItem(QWidget):
         # 透明背景,透出容器深色(避免 Windows 下 QStackedWidget 默认白底)
         self.stack.setStyleSheet("QStackedWidget#taskStack { background: transparent; }")
 
-        self.label = QLabel(task.text or "")
+        self.label = QLabel(wrap_for_label(task.text or ""))
         self.label.setObjectName("taskText")
         self.label.setWordWrap(True)
         self.label.setTextFormat(Qt.PlainText)
         self.label.setTextInteractionFlags(Qt.NoTextInteraction)
+        # Ignored 使 label 的 minimumSizeHint(长串时为整行宽度)不参与布局。
+        # 连续数字/英文等无空格长串之所以能换行,靠 _wrap_for_label 注入的
+        # 零宽空格(U+200B)提供断行点——QLabel.wordWrap 只在词边界换行,
+        # 没有断行点的纯数字串会被当成一个整体词,撑到内容宽度。
+        self.label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.label.setMinimumWidth(0)
-        self.label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.label.setMaximumWidth(16777215)
         self.label.setCursor(QCursor(Qt.IBeamCursor))
         self.label.installEventFilter(self)
         self.label.setStyleSheet("""
@@ -301,7 +323,7 @@ class TaskItem(QWidget):
             self.delete_requested.emit(self.task.id)
         elif text != self.task.text:
             self.task.text = text
-            self.label.setText(text)
+            self.label.setText(wrap_for_label(text))
             self._exit_edit()
             self.text_changed.emit(self.task.id, text)
         else:

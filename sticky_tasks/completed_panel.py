@@ -8,6 +8,7 @@ from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QCursor, QColor, QFont
 
 from .app_settings import Theme
+from .task_item import wrap_for_label
 
 PANEL_QSS = """
 CompletedPanel { background: transparent; }
@@ -199,13 +200,28 @@ class CompletedPanel(QWidget):
         self.body.activate()
 
     def content_height(self):
-        """返回完整展示当前内容所需的面板高度。"""
+        """返回完整展示当前内容所需的面板高度。
+
+        按每行 label 在当前实际宽度下换行后的 heightForWidth 计算,
+        不依赖 sizeHint(长串/多行文本下 sizeHint 不可靠)。
+        """
         margins = self.layout().contentsMargins()
         rows = list(self._row_for.values())
         heights = []
         for row in rows:
-            row.layout().activate()
-            heights.append(max(34, row.sizeHint().height()))
+            lm = row.layout().contentsMargins()
+            # label 可用宽度 = 行宽 - 左右内边距 - 恢复按钮(22) - 间距(8)
+            text_w = max(
+                40,
+                row.width() - lm.left() - lm.right() - 22 - 8,
+            )
+            lbl = row.findChild(QLabel)
+            line_h = max(34, lbl.fontMetrics().lineSpacing() + 2)
+            if lbl is not None and lbl.text():
+                text_h = lbl.heightForWidth(text_w)
+                heights.append(max(line_h, text_h + lm.top() + lm.bottom()))
+            else:
+                heights.append(line_h + lm.top() + lm.bottom())
         spacing = self.body.spacing() * max(0, len(rows) - 1)
         return max(42, sum(heights) + spacing + margins.top() + margins.bottom())
 
@@ -216,7 +232,8 @@ class CompletedPanel(QWidget):
         h.setContentsMargins(10, 5, 6, 5)
         h.setSpacing(8)
         text = task.text if task.text else "(空任务)"
-        lbl = QLabel(text)
+        # 注入零宽空格提供断行点:与主列表一致,连续数字/无空格长串也能换行
+        lbl = QLabel(wrap_for_label(text))
         lbl.setTextFormat(Qt.PlainText)
         lbl.setObjectName("doneTextDone" if task.text else "doneText")
         if self._theme is not None:
@@ -225,7 +242,11 @@ class CompletedPanel(QWidget):
             font.setStrikeOut(True)
             lbl.setFont(font)
         lbl.setWordWrap(True)            # 长文本触碰框边自动换行
-        lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        # Ignored 使 label 的 minimumSizeHint(长串时为整行宽度)不参与布局,
+        # 否则 sizeHint 会被长串撑爆,导致行高和面板 content_height 算错。
+        lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        lbl.setMinimumWidth(0)
+        lbl.setMaximumWidth(16777215)
         h.addWidget(lbl, 1)
         btn = QPushButton("↩")
         btn.setObjectName("restoreBtn")
