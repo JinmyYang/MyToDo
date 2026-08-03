@@ -7,9 +7,10 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QColorDialog, QComboBox, QSlider, QSpinBox, QCompleter,
+    QAbstractSpinBox, QLineEdit,
 )
 # 注:QCompleter 仅用其枚举常量配置 combo 内置补全器,不另建实例
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QEvent
 from PySide6.QtGui import QColor, QCursor, QFontDatabase
 
 from .app_settings import AppSettings, MIN_BG_OPACITY
@@ -90,6 +91,20 @@ PRESETS = [
 ]
 
 
+class _NoWheelComboBox(QComboBox):
+    """禁用滚轮换字体:悬停/聚焦时滚轮一动就换字体,太容易误触。"""
+
+    def wheelEvent(self, event):
+        event.ignore()  # 交给父级(页面滚动等)
+
+
+class _NoWheelSpinBox(QSpinBox):
+    """禁用滚轮改字号,理由同上。"""
+
+    def wheelEvent(self, event):
+        event.ignore()
+
+
 class SettingsWindow(QWidget):
     """外观设置独立窗口(非模态,实时预览)。"""
 
@@ -167,7 +182,7 @@ class SettingsWindow(QWidget):
         # ---- 字体 ----
         root.addWidget(self._row_label("字体"))
         self._font_families = sorted(QFontDatabase.families(), key=str.casefold)
-        self._font_combo = QComboBox()
+        self._font_combo = _NoWheelComboBox()
         self._font_combo.setEditable(True)
         self._font_combo.setInsertPolicy(QComboBox.NoInsert)
         self._font_combo.addItems(self._font_families)
@@ -186,7 +201,7 @@ class SettingsWindow(QWidget):
         # ---- 字号 ----
         root.addWidget(self._row_label("字号"))
         size_row = QHBoxLayout()
-        self._size_spin = QSpinBox()
+        self._size_spin = _NoWheelSpinBox()
         self._size_spin.setRange(9, 24)
         self._size_spin.setValue(self._settings.font_size)
         self._size_spin.setSuffix(" px")
@@ -231,6 +246,26 @@ class SettingsWindow(QWidget):
         reset_btn.clicked.connect(self._reset)
         reset_row.addWidget(reset_btn)
         root.addLayout(reset_row)
+
+        self._install_click_blank_clear_focus()
+
+    # ---- 点击空白处清除焦点(消掉字号框的蓝色选中高亮)----
+    _FOCUS_KEEPERS = (QComboBox, QAbstractSpinBox, QLineEdit, QSlider)
+
+    def _install_click_blank_clear_focus(self):
+        self.installEventFilter(self)
+        for child in self.findChildren(QWidget):
+            child.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if (
+            event.type() == QEvent.MouseButtonPress
+            and not isinstance(obj, self._FOCUS_KEEPERS)
+        ):
+            focused = self.focusWidget()
+            if focused is not None:
+                focused.clearFocus()
+        return super().eventFilter(obj, event)
 
     # ---- 工具 ----
     def _row_label(self, text):
