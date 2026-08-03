@@ -7,9 +7,12 @@
 project0711 — 一个**桌面任务便签软件**(本地运行,Windows 自用)。
 
 - 半透明、无边框、普通窗口层级(非置顶),能看到壁纸
-- 点加号创建任务,任务文本可直接在桌面上编辑
+- 点加号创建任务,双击任务文字编辑
 - 点任务左侧小圆点 → 任务从桌面消失并标记完成 → 进入"已完成"隐藏栏
 - 已完成栏可展开,一键把任务恢复回主列表
+- 删除任务进入历史任务,可批量恢复或永久删除
+- 外观可自定义(主题/字体/字号/透明度),支持保存预设
+- 锁定模式隐藏编辑控件,避免误操作
 - 数据持久化到 JSON,关掉重开任务还在(不过夜刷新)
 - 不需要用户管理、不需要每日重置
 
@@ -20,7 +23,7 @@ project0711 — 一个**桌面任务便签软件**(本地运行,Windows 自用)�
 
 - 语言: Python 3.13
 - GUI 框架: PySide6 (Qt for Python) 6.11
-- 数据持久化: JSON 文件(存于软件目录下的 `.sticky_tasks/tasks.json`)
+- 数据持久化: JSON 文件(存于软件目录下的 `.sticky_tasks/tasks.json`,原子写入)
 - 测试: pytest
 - 包管理: pip + requirements.txt
 
@@ -29,16 +32,23 @@ project0711 — 一个**桌面任务便签软件**(本地运行,Windows 自用)�
 ```
 project0711/
 ├── CLAUDE.md            # 本文件
-├── README.md
+├── README.md            # 功能与使用说明(用户视角)
 ├── requirements.txt
 ├── main.py              # 入口:启动 QApplication + MainWindow
 ├── sticky_tasks/        # 应用包
 │   ├── __init__.py
+│   ├── app_paths.py         # 数据/日志等路径解析
+│   ├── app_settings.py      # 外观设置模型与主题派生
 │   ├── task_store.py        # 数据层:Task / TaskStore(增删、完成、恢复、JSON 持久化)
+│   ├── json_io.py           # 原子文件写入
 │   ├── task_item.py         # UI:单个任务项(圆点 + 可编辑文本)
-│   ├── main_window.py       # UI:主窗口(半透明/无边框/置顶/拖动/列表/加号)
-│   └── completed_panel.py   # UI:已完成面板(恢复任务)
+│   ├── completed_panel.py   # UI:已完成面板(恢复任务)
+│   ├── history_window.py    # UI:历史任务批量管理窗口
+│   ├── settings_dialog.py   # UI:外观设置窗口
+│   └── main_window.py       # UI:主窗口(半透明/无边框/拖动/缩放/列表/加号)
 └── tests/
+    ├── test_app_paths.py    # 路径解析测试
+    ├── test_app_settings.py # 外观设置测试
     ├── test_task_store.py   # 数据层单元测试
     └── test_gui_smoke.py    # GUI 冒烟测试(offscreen 平台)
 ```
@@ -68,6 +78,8 @@ QT_QPA_PLATFORM=offscreen python -m pytest tests/test_gui_smoke.py -v
 - **任务对象同一引用**:`TaskItem.task` 与 `store.tasks` 中的对象是同一个,UI 改文本时本地与 store 同步。
 - **完成动作的边界**:空任务被点完成时直接删除,不进已完成栏(避免空任务堆积)。
 - **圆点不抢焦点**:`TaskItem.dot` 设 `Qt.NoFocus`,点完成时不会触发文本框的 `editingFinished`,避免完成与保存逻辑冲突。
+- **半透明 + 圆角**:窗口 `WA_TranslucentBackground` + 容器 `rgba` 背景,文字保持不透明清晰;圆角外区域透明。
+- **拖动/缩放**:无边框窗口重写鼠标事件,点标题栏空白处拖动;锁定后禁止拖拽缩放。
 
 ## 开发约定
 

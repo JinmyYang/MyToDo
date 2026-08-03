@@ -82,6 +82,7 @@ project0711/
 ├── main.py                  # 入口
 ├── requirements.txt
 ├── sticky_tasks/
+│   ├── app_paths.py         # 数据/日志等路径解析
 │   ├── task_store.py        # 数据层(Task / TaskStore)
 │   ├── json_io.py           # 原子文件写入
 │   ├── app_settings.py      # 外观设置模型与主题派生
