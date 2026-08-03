@@ -210,14 +210,19 @@ class CompletedPanel(QWidget):
         heights = []
         for row in rows:
             lm = row.layout().contentsMargins()
+            # 刚创建的行可能尚未布局(width 为 0),回退到面板宽度估算
+            row_w = row.width() if row.width() > 0 else self.width()
             # label 可用宽度 = 行宽 - 左右内边距 - 恢复按钮(22) - 间距(8)
             text_w = max(
                 40,
-                row.width() - lm.left() - lm.right() - 22 - 8,
+                row_w - lm.left() - lm.right() - 22 - 8,
             )
             lbl = row.findChild(QLabel)
+            if lbl is None:
+                heights.append(34 + lm.top() + lm.bottom())
+                continue
             line_h = max(34, lbl.fontMetrics().lineSpacing() + 2)
-            if lbl is not None and lbl.text():
+            if lbl.text():
                 text_h = lbl.heightForWidth(text_w)
                 heights.append(max(line_h, text_h + lm.top() + lm.bottom()))
             else:

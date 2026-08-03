@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QScrollArea, QFrame,
-    QApplication, QMenu, QGraphicsOpacityEffect,
+    QApplication, QMenu, QGraphicsOpacityEffect, QAbstractButton,
 )
 from PySide6.QtCore import (
     Qt, QEvent, QSize, QPointF, Signal, QRectF, QPropertyAnimation, QEasingCurve,
@@ -241,7 +241,7 @@ class MainWindow(QWidget):
         self._settings_save_timer.setSingleShot(True)
         self._settings_save_timer.setInterval(180)
         self._settings_save_timer.timeout.connect(self._flush_settings_save)
-        QApplication.instance().aboutToQuit.connect(self._flush_settings_save)
+        QApplication.instance().aboutToQuit.connect(self._save_settings_on_quit)
         self._dragged_task_id = None
         self._task_drag_global_pos = None
         self._task_drag_order_changed = False
@@ -385,6 +385,11 @@ class MainWindow(QWidget):
             pos = self.mapFromGlobal(event.globalPosition().toPoint())
             direction = self._edge(pos)
             if direction is not None:
+                # 角落区域与 footer 按钮重叠时,优先让按钮处理点击;
+                # 边(非角)仍照常启动缩放。
+                corners = ("topleft", "topright", "bottomleft", "bottomright")
+                if isinstance(obj, QAbstractButton) and direction in corners:
+                    return False
                 self._resize_dir = direction
                 self._resize_start_geo = self.frameGeometry()
                 self._resize_origin = event.globalPosition().toPoint()
@@ -437,6 +442,10 @@ class MainWindow(QWidget):
 
     # ---- 加载 ----
     def load_tasks(self):
+        # 清理上次退出时残留的空任务(新建后未输入即退出所致)
+        empty_ids = [t.id for t in self.store.active_tasks() if not t.text.strip()]
+        if empty_ids:
+            self.store.permanent_delete(empty_ids)
         for t in self.store.active_tasks():
             self._add_item_widget(t, focus=False, animate=False)
         self.completed_panel.set_tasks(self.store.completed_tasks())
@@ -804,12 +813,34 @@ class MainWindow(QWidget):
         self._settings_dirty = True
         self._settings_save_timer.start()
 
+    def _snapshot_geometry(self):
+        """把当前窗口位置/大小写入 settings(展开态折算回折叠态)。"""
+        saved_height = self.height()
+        saved_y = self.y()
+        if self._completed_expanded:
+            saved_height = max(MIN_H, saved_height - self._expanded_panel_h)
+            saved_y += self._panel_lift
+        self.settings.window_x = self.x()
+        self.settings.window_y = saved_y
+        self.settings.window_width = self.width()
+        self.settings.window_height = saved_height
+
     def _flush_settings_save(self):
         if not self._settings_dirty:
             return
         self._settings_save_timer.stop()
         self.settings.save(self._settings_path)
         self._settings_dirty = False
+
+    def _save_settings_on_quit(self):
+        """退出前强制保存一次。
+
+        菜单"退出"走 QApplication.quit(),不触发 closeEvent,
+        若只依赖 closeEvent,窗口位置/大小会丢失。
+        """
+        self._snapshot_geometry()
+        self._settings_dirty = True
+        self._flush_settings_save()
 
     def apply_theme(self):
         """重新从 settings 生成主题并刷新所有 UI。"""
@@ -945,15 +976,7 @@ class MainWindow(QWidget):
         history_win = getattr(self, "_history_win", None)
         if history_win is not None:
             history_win.close()
-        saved_height = self.height()
-        saved_y = self.y()
-        if self._completed_expanded:
-            saved_height = max(MIN_H, saved_height - self._expanded_panel_h)
-            saved_y += self._panel_lift
-        self.settings.window_x = self.x()
-        self.settings.window_y = saved_y
-        self.settings.window_width = self.width()
-        self.settings.window_height = saved_height
+        self._snapshot_geometry()
         self._settings_dirty = True
         self._flush_settings_save()
         self._apply_edge_cursor(None)

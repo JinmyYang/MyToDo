@@ -176,7 +176,8 @@ class SettingsWindow(QWidget):
         completer.setCaseSensitivity(Qt.CaseInsensitive)
         completer.setFilterMode(Qt.MatchContains)
         completer.setCompletionMode(QCompleter.PopupCompletion)
-        completer.activated[str].connect(self._on_font_activated)
+        # 只连 textActivated:补全弹窗选中时 combo 也会发 textActivated,
+        # 若再连 completer.activated 会重复触发。
         self._font_combo.setCompleter(completer)
         self._font_combo.textActivated.connect(self._on_font_activated)
         self._font_combo.lineEdit().editingFinished.connect(self._commit_font_text)

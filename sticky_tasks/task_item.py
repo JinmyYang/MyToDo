@@ -1,7 +1,7 @@
 ﻿"""单个任务项:圆点(点击完成)+ 文字(右键编辑/删除)+ 锁定开锁。"""
 
 from PySide6.QtWidgets import (
-    QWidget, QHBoxLayout, QPushButton, QLabel, QStackedWidget,
+    QWidget, QHBoxLayout, QLabel, QStackedWidget,
     QMenu, QFrame, QPlainTextEdit, QSizePolicy, QApplication,
 )
 from PySide6.QtCore import Signal, Qt, QEvent, QTimer, QPoint, QPointF
@@ -23,8 +23,8 @@ def wrap_for_label(text):
     可断行"的断点,但它零宽,渲染完全不可见,复制文本也不受影响。
     仅用于展示用的 label;store 里始终存原始文本。
     """
-    # 跳过空白字符:空格/制表符本身就是断行点,避免在其后再插 ZWSP。
-    return ZWSP.join(
+    # 逐字符拼接,跳过空白字符:空格/制表符本身就是断行点,不再在其后插 ZWSP。
+    return "".join(
         ch if ch.isspace() else ch + ZWSP
         for ch in text
     )
@@ -339,10 +339,14 @@ class TaskItem(QWidget):
         self._fit_label_height()
         self._schedule_fit_height()
 
+    def _dot_space(self):
+        """圆点占用的横向空间;锁定后圆点隐藏,布局不再为它留位。"""
+        return 0 if self._locked else self.dot.width() + self._layout.spacing()
+
     def _fit_label_height(self):
         """展示态按当前宽度换行，避免缩窄窗口时裁掉任务文本。"""
         m = self._layout.contentsMargins()
-        w = self.width() - m.left() - m.right() - self._layout.spacing() - self.dot.width()
+        w = self.width() - m.left() - m.right() - self._dot_space()
         text_width = max(w, 40)
         # 重置高度约束(setFixedHeight 会污染 heightForWidth 的返回值!)
         self.label.setMinimumHeight(0)
@@ -361,7 +365,7 @@ class TaskItem(QWidget):
         """编辑框按当前宽度自动换行，并完整容纳全部文本。"""
         line_h = self.edit.fontMetrics().lineSpacing()
         m = self._layout.contentsMargins()
-        w = self.width() - m.left() - m.right() - self._layout.spacing() - self.dot.width()
+        w = self.width() - m.left() - m.right() - self._dot_space()
         viewport_w = self.edit.viewport().width()
         if viewport_w < 40:
             viewport_w = max(self.stack.width() - 16, w - 16, 40)
@@ -535,5 +539,6 @@ class TaskItem(QWidget):
         self.dot.setVisible(not locked)
         self.label.setCursor(QCursor(Qt.ArrowCursor if locked else Qt.IBeamCursor))
         if locked and self.stack.currentIndex() == self._EDIT_PAGE:
-            self._exit_edit()
+            self._on_editing_finished()  # 提交而非丢弃已输入的文本
+        self._schedule_fit_height()  # 圆点显隐后重算文本宽度与行高
         self.update()

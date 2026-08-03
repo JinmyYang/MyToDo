@@ -185,6 +185,10 @@ class TaskStore:
             t.completed_at = None
             t.deleted = False
             t.deleted_at = None
+            # UI 上恢复的任务追加到列表末尾,存储顺序须与之保持一致,
+            # 否则重启后任务会跳回原位置。
+            self.tasks.remove(t)
+            self.tasks.append(t)
             self.save()
         return t
 
