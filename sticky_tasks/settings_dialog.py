@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QColorDialog, QComboBox, QSlider, QSpinBox, QCompleter,
 )
+# 注:QCompleter 仅用其枚举常量配置 combo 内置补全器,不另建实例
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QCursor, QFontDatabase
 
@@ -172,13 +173,12 @@ class SettingsWindow(QWidget):
         self._font_combo.addItems(self._font_families)
         self._font_combo.setCurrentText(self._settings.font_family)
         self._font_combo.lineEdit().setPlaceholderText("搜索字体")
-        completer = QCompleter(self._font_families, self._font_combo)
+        # 直接配置内置补全器(可编辑 combo 自带),不再另建 QCompleter:
+        # 少一份 500+ 字体项的补全模型,打开设置窗口更快。
+        completer = self._font_combo.completer()
         completer.setCaseSensitivity(Qt.CaseInsensitive)
         completer.setFilterMode(Qt.MatchContains)
         completer.setCompletionMode(QCompleter.PopupCompletion)
-        # 只连 textActivated:补全弹窗选中时 combo 也会发 textActivated,
-        # 若再连 completer.activated 会重复触发。
-        self._font_combo.setCompleter(completer)
         self._font_combo.textActivated.connect(self._on_font_activated)
         self._font_combo.lineEdit().editingFinished.connect(self._commit_font_text)
         root.addWidget(self._font_combo)

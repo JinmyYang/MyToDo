@@ -103,6 +103,11 @@ QFrame#footerBar {{
 QScrollArea#listScroll {{ border: none; background: transparent; }}
 QScrollArea#listScroll viewport {{ background: transparent; }}
 QWidget#listWidget {{ background: transparent; }}
+QLabel#emptyHint {{
+    color: rgba({ico.red()}, {ico.green()}, {ico.blue()}, 110);
+    font-size: 11px;
+    padding: 6px 16px 0 16px;
+}}
 QScrollBar:vertical {{ background: transparent; width: 9px; margin: 6px 0; }}
 QScrollBar::handle:vertical {{
     background: rgba({sb.red()},{sb.green()},{sb.blue()},{sb.alpha()});
@@ -245,6 +250,8 @@ class MainWindow(QWidget):
         self._dragged_task_id = None
         self._task_drag_global_pos = None
         self._task_drag_order_changed = False
+        self._fade_pixmap = None   # 边缘羽化缓存,避免每次重绘都画 14 层矢量图形
+        self._fade_key = None
         self._task_drag_scroll_timer = QTimer(self)
         self._task_drag_scroll_timer.setInterval(40)
         self._task_drag_scroll_timer.timeout.connect(self._auto_scroll_task_drag)
@@ -304,6 +311,12 @@ class MainWindow(QWidget):
         self._inline_add_btn.setToolTip("新建任务 (Ctrl+N)")
         self._inline_add_btn.clicked.connect(self.add_task)
         self.list_layout.addWidget(self._inline_add_btn)
+
+        # ---- 空列表引导提示(紧跟加号之后;不占用任务的索引空间)----
+        self._empty_hint = QLabel("暂无任务 —— 点击上方 + 或按 Ctrl+N 新建")
+        self._empty_hint.setObjectName("emptyHint")
+        self._empty_hint.setVisible(False)
+        self.list_layout.addWidget(self._empty_hint)
 
         self.list_layout.addStretch()  # 末尾占位,任务顶对齐
         self.scroll.setWidget(self.list_widget)
@@ -411,15 +424,44 @@ class MainWindow(QWidget):
                 return True
         return super().eventFilter(obj, event)
 
-    # ---- 边缘虚化 ----
+    # ---- 边缘虚化(缓存成位图,避免每次重绘都画 14 层矢量图形)----
     def paintEvent(self, event):
         super().paintEvent(event)
+        if self.width() <= 0 or self.height() <= 0:
+            return
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        self._draw_edge_fade(p)
+        p.drawPixmap(0, 0, self._edge_fade_pixmap())
         p.end()
 
-    def _draw_edge_fade(self, p):
+    def _screen_dpr(self):
+        """窗口所在屏幕的设备像素比(副屏高DPI下图标不糊)。"""
+        try:
+            screen = (
+                QApplication.screenAt(self.frameGeometry().center())
+                or QApplication.primaryScreen()
+            )
+            return (screen.devicePixelRatio() if screen else None) or 1.0
+        except Exception:
+            return 1.0
+
+    def _edge_fade_pixmap(self):
+        """返回当前尺寸+主题下的羽化位图,命中缓存时直接复用。"""
+        key = (self.width(), self.height(), id(self.theme))
+        if self._fade_pixmap is not None and self._fade_key == key:
+            return self._fade_pixmap
+        dpr = self._screen_dpr()
+        pm = QPixmap(int(self.width() * dpr), int(self.height() * dpr))
+        pm.setDevicePixelRatio(dpr)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        self._paint_edge_fade(p)
+        p.end()
+        self._fade_pixmap = pm
+        self._fade_key = key
+        return pm
+
+    def _paint_edge_fade(self, p):
         """容器边缘向外逐渐虚化(羽化),替代硬阴影。
 
         从容器边缘向外画多层同心圆角矩形,越往外 alpha 越低,
@@ -443,6 +485,10 @@ class MainWindow(QWidget):
             p.drawRoundedRect(rect, r, r)
 
     # ---- 加载 ----
+    def _update_empty_hint(self):
+        """无活跃任务时显示引导提示。"""
+        self._empty_hint.setVisible(not self._active_items)
+
     def load_tasks(self):
         # 清理上次退出时残留的空任务(新建后未输入即退出所致)
         empty_ids = [t.id for t in self.store.active_tasks() if not t.text.strip()]
@@ -452,6 +498,7 @@ class MainWindow(QWidget):
             self._add_item_widget(t, focus=False, animate=False)
         self.completed_panel.set_tasks(self.store.completed_tasks())
         self._update_footer()
+        self._update_empty_hint()
 
     def _add_item_widget(self, task, focus=True, animate=True, position=None):
         item = TaskItem(task)
@@ -462,9 +509,9 @@ class MainWindow(QWidget):
         item.drag_started.connect(self._on_task_drag_started)
         item.drag_moved.connect(self._on_task_drag_moved)
         item.drag_finished.connect(self._on_task_drag_finished)
-        # 插到加号按钮之前(加号始终紧跟最后一个任务,其后才是末尾 stretch)
+        # 插到加号按钮之前(加号始终紧跟最后一个任务)
         if position is None:
-            position = self.list_layout.count() - 2
+            position = self.list_layout.indexOf(self._inline_add_btn)
         self.list_layout.insertWidget(position, item)
         self._active_items[task.id] = item
         if self._edge_watch_ready:
@@ -473,6 +520,7 @@ class MainWindow(QWidget):
             self._fade_in(item)
         if focus:
             item.start_edit()
+        self._update_empty_hint()
         return item
 
     def _fade_in(self, item):
@@ -512,6 +560,7 @@ class MainWindow(QWidget):
         self.completed_panel.set_tasks(self.store.completed_tasks())
         self._sync_expanded_panel_height()
         self._update_footer()
+        self._update_empty_hint()
 
     def on_restore(self, task_id):
         self.store.restore(task_id)
@@ -617,6 +666,7 @@ class MainWindow(QWidget):
         self.completed_panel.set_tasks(self.store.completed_tasks())
         self._sync_expanded_panel_height()
         self._update_footer()
+        self._update_empty_hint()
 
     # ---- 已完成面板展开/折叠(向下扩展窗口高度,不挤压任务列表)----
     def toggle_completed(self):
@@ -708,13 +758,10 @@ class MainWindow(QWidget):
         return "down" if self._completed_expanded else "right"
 
     def _chevron_pixmap(self, direction, size=14, color=None):
-        """用 QPainter 画矢量 chevron:浮点坐标严格对称 + 按设备像素比(DPR)高清渲染,不糊。"""
+        """用 QPainter 画矢量 chevron:浮点坐标严格对称 + 按所在屏幕 DPR 高清渲染,不糊。"""
         if color is None:
             color = self.theme.icon_color
-        try:
-            dpr = QApplication.primaryScreen().devicePixelRatio() or 1.0
-        except Exception:
-            dpr = 1.0
+        dpr = self._screen_dpr()
         pm = QPixmap(int(size * dpr), int(size * dpr))
         pm.setDevicePixelRatio(dpr)
         pm.fill(Qt.transparent)
@@ -743,10 +790,7 @@ class MainWindow(QWidget):
         """画矢量齿轮图标。"""
         if color is None:
             color = self.theme.icon_color
-        try:
-            dpr = QApplication.primaryScreen().devicePixelRatio() or 1.0
-        except Exception:
-            dpr = 1.0
+        dpr = self._screen_dpr()
         pm = QPixmap(int(size * dpr), int(size * dpr))
         pm.setDevicePixelRatio(dpr)
         pm.fill(Qt.transparent)
@@ -808,6 +852,7 @@ class MainWindow(QWidget):
         self.completed_panel.set_tasks(self.store.completed_tasks())
         self._sync_expanded_panel_height()
         self._update_footer()
+        self._update_empty_hint()
 
     def _on_settings_changed(self):
         """设置变动立即预览，短时间内的连续磁盘写入合并保存。"""
@@ -863,6 +908,9 @@ class MainWindow(QWidget):
             item.set_theme(t)
         # 已完成面板
         self.completed_panel.set_theme(t)
+        # 主题变了,羽化缓存失效
+        self._fade_pixmap = None
+        self._fade_key = None
         # 边缘虚化重画
         self.update()
 

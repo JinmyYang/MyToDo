@@ -798,3 +798,141 @@ def test_window_geometry_is_restored_and_clamped_to_screen(app):
         assert screen.contains(w.frameGeometry().topLeft())
         assert w.width() == 360
         assert w.height() == 500
+
+
+def test_empty_hint_visibility_follows_task_count(app):
+    """无活跃任务时显示引导提示,有任务时隐藏。"""
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        w = MainWindow(store, settings_path=root / "settings.json")
+        w.show()
+        app.processEvents()
+        assert w._empty_hint.isVisible()
+
+        w.add_task()
+        app.processEvents()
+        new_item = list(w._active_items.values())[-1]
+        new_item.edit.setPlainText("第一个任务")
+        new_item._on_editing_finished()
+        app.processEvents()
+        assert not w._empty_hint.isVisible()
+
+        # 完成唯一任务(非空,进已完成栏)后列表又空了
+        only_id = list(w._active_items.keys())[0]
+        w.on_complete(only_id)
+        app.processEvents()
+        assert w._empty_hint.isVisible()
+
+
+def test_expand_collapse_restores_exact_geometry(app):
+    """展开/折叠已完成面板后,窗口几何精确回到原位。"""
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        task = store.add("做完的")
+        store.complete(task.id)
+        w = MainWindow(store, settings_path=root / "settings.json")
+        w.move(120, 80)
+        w.resize(300, 400)
+        w.show()
+        app.processEvents()
+        geo = (w.x(), w.y(), w.width(), w.height())
+
+        w.toggle_completed()
+        app.processEvents()
+        assert w.height() == geo[3] + w._expanded_panel_h
+
+        w.toggle_completed()
+        app.processEvents()
+        assert (w.x(), w.y(), w.width(), w.height()) == geo
+        assert w._panel_lift == 0
+
+
+def test_expand_near_screen_bottom_lifts_and_collapse_restores(app):
+    """贴屏幕底边展开时窗口上移避让,折叠后精确回到原位。"""
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        task = store.add("做完的")
+        store.complete(task.id)
+        w = MainWindow(store, settings_path=root / "settings.json")
+        screen = QApplication.primaryScreen().availableGeometry()
+        w.resize(320, 320)
+        w.move(screen.left() + 40, screen.bottom() - 320 + 1)
+        w.show()
+        app.processEvents()
+        y0, h0 = w.y(), w.height()
+
+        w.toggle_completed()
+        app.processEvents()
+        assert w.frameGeometry().bottom() <= screen.bottom()
+        assert w.y() < y0
+        assert w._panel_lift > 0
+
+        w.toggle_completed()
+        app.processEvents()
+        assert w.height() == h0
+        assert w.y() == y0
+        assert w._panel_lift == 0
+
+
+def test_expanded_panel_shrink_then_collapse_restores(app):
+    """展开期间面板内容变少(高度收缩),折叠后仍精确回到原位。"""
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        task = store.add("做完的")
+        store.complete(task.id)
+        w = MainWindow(store, settings_path=root / "settings.json")
+        screen = QApplication.primaryScreen().availableGeometry()
+        w.resize(320, 320)
+        w.move(screen.left() + 40, screen.bottom() - 320 + 1)
+        w.show()
+        app.processEvents()
+        y0, h0 = w.y(), w.height()
+
+        w.toggle_completed()
+        app.processEvents()
+        expanded_h = w.height()
+
+        # 删掉唯一的已完成任务 → 面板高度收缩
+        w.on_delete(task.id)
+        app.processEvents()
+        assert w.height() < expanded_h
+
+        w.toggle_completed()
+        app.processEvents()
+        assert w.height() == h0
+        assert w.y() == y0
+        assert w._panel_lift == 0
+
+
+def test_edge_fade_pixmap_is_cached_until_resize_or_theme_change(app):
+    """羽化位图只在尺寸/主题变化时重建。"""
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        w = MainWindow(store, settings_path=root / "settings.json")
+        w.resize(300, 400)
+        w.show()
+        app.processEvents()
+
+        pm1 = w._edge_fade_pixmap()
+        pm2 = w._edge_fade_pixmap()
+        assert pm1 is pm2
+
+        w.resize(310, 400)
+        app.processEvents()
+        pm3 = w._edge_fade_pixmap()
+        assert pm3 is not pm1
+
+
+def test_single_instance_lock_blocks_second_acquire(tmp_path):
+    """同一数据目录的第二个实例拿不到锁。"""
+    from sticky_tasks.single_instance import SingleInstance
+
+    first = SingleInstance(tmp_path)
+    assert first.try_acquire() is True
+    second = SingleInstance(tmp_path)
+    assert second.try_acquire() is False
