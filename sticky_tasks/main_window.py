@@ -44,7 +44,7 @@ def build_qss(t: Theme) -> str:
 QFrame#container {{
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
         stop:0 rgba({top.red()}, {top.green()}, {top.blue()}, {op}),
-        stop:1 rgba({bot.red()}, {bot.green()}, {bot.blue()}, {min(op + 6, 255)}));
+        stop:1 rgba({bot.red()}, {bot.green()}, {bot.blue()}, {min(int(op * 1.025), 255)}));
     border: none;
     border-radius: 8px;
 }}
@@ -430,11 +430,13 @@ class MainWindow(QWidget):
         fade = 7.0       # 虚化区域宽度(略小于 8px 外边距)
         layers = 14
         base = self.theme.edge_fade_color
+        # 羽化强度随背景透明度等比缩放:低透明度时不再残留一圈可见薄雾
+        fade_strength = self.theme.bg_opacity / 255.0
         p.setPen(Qt.NoPen)
         for i in range(layers, 0, -1):
             expand = fade * i / layers
             # 越贴近容器边缘越不透明,最外层趋近全透明
-            alpha = int(56 * (1.0 - (i - 1) / layers))
+            alpha = int(56 * fade_strength * (1.0 - (i - 1) / layers))
             rect = cr.adjusted(-expand, -expand, expand, expand)
             r = radius + expand
             p.setBrush(QColor(base.red(), base.green(), base.blue(), alpha))
