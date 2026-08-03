@@ -54,6 +54,24 @@ QFrame#sectionSep {{
     max-height: 1px;
 }}
 QLabel {{ color: {txt.name()}; font-size: {t.font_size}px; font-family: "{t.font_family}"; }}
+QStackedWidget#taskStack {{ background: transparent; }}
+QLabel#taskText {{
+    background: transparent;
+    border: none;
+    color: {txt.name()};
+    font-size: {t.font_size}px;
+    font-family: "{t.font_family}";
+    padding: 0px;
+}}
+QPlainTextEdit#taskEdit {{
+    background: rgba({hl.red()},{hl.green()},{hl.blue()},12);
+    border: 1px solid rgba({acc.red()}, {acc.green()}, {acc.blue()}, 140);
+    border-radius: 8px;
+    color: {txt.name()};
+    font-size: {t.font_size}px;
+    font-family: "{t.font_family}";
+    padding: 5px 7px;
+}}
 QLabel#titleLabel {{
     color: {t.fixed_title_color.name()};
     font-size: 11px;

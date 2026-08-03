@@ -150,14 +150,13 @@ class TaskItem(QWidget):
         self.dot.clicked.connect(lambda: self.completed.emit(self.task.id))
         lay.addWidget(self.dot)
 
-        # 文字:展示用 QLabel + 编辑用 QPlainTextEdit,同位置切换避免布局抖动
+        # 文字:展示用 QLabel;编辑用 QPlainTextEdit 懒创建(首次进入编辑才实例化,
+        # 避免每行都背一个重量级文本编辑器)。样式统一由容器级 QSS 提供。
         self.stack = QStackedWidget()
         self.stack.setObjectName("taskStack")
         self.stack.setFrameShape(QFrame.NoFrame)
         self.stack.setMinimumWidth(0)
         self.stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
-        # 透明背景,透出容器深色(避免 Windows 下 QStackedWidget 默认白底)
-        self.stack.setStyleSheet("QStackedWidget#taskStack { background: transparent; }")
 
         self.label = QLabel(wrap_for_label(task.text or ""))
         self.label.setObjectName("taskText")
@@ -165,7 +164,7 @@ class TaskItem(QWidget):
         self.label.setTextFormat(Qt.PlainText)
         self.label.setTextInteractionFlags(Qt.NoTextInteraction)
         # Ignored 使 label 的 minimumSizeHint(长串时为整行宽度)不参与布局。
-        # 连续数字/英文等无空格长串之所以能换行,靠 _wrap_for_label 注入的
+        # 连续数字/英文等无空格长串之所以能换行,靠 wrap_for_label 注入的
         # 零宽空格(U+200B)提供断行点——QLabel.wordWrap 只在词边界换行,
         # 没有断行点的纯数字串会被当成一个整体词,撑到内容宽度。
         self.label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
@@ -173,41 +172,10 @@ class TaskItem(QWidget):
         self.label.setMaximumWidth(16777215)
         self.label.setCursor(QCursor(Qt.IBeamCursor))
         self.label.installEventFilter(self)
-        self.label.setStyleSheet("""
-    QLabel#taskText {
-        background: transparent;
-        border: none;
-        color: #e9e9ef;
-        font-size: 13px;
-        padding: 0px;
-    }
-""")
 
-        self.edit = QPlainTextEdit(task.text)
-        self.edit.setObjectName("taskEdit")
-        self.edit.setPlaceholderText("输入任务…")
-        self.edit.setLineWrapMode(QPlainTextEdit.WidgetWidth)
-        self.edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.edit.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.edit.setMinimumWidth(0)
-        self.edit.setStyleSheet("""
-    QPlainTextEdit#taskEdit {
-        background: rgba(255,255,255,12);
-        border: 1px solid rgba(94, 160, 255, 140);
-        border-radius: 8px;
-        color: #f2f2f6;
-        font-size: 13px;
-        padding: 5px 7px;
-    }
-""")
-        initial_edit_h = self.edit.fontMetrics().lineSpacing() + 14
-        self.edit.setFixedHeight(initial_edit_h)
-        self.edit.installEventFilter(self)
-        self.edit.textChanged.connect(self._fit_edit_height)
+        self.edit = None  # 懒创建,见 _ensure_edit()
 
         self.stack.addWidget(self.label)
-        self.stack.addWidget(self.edit)
         self.stack.setCurrentIndex(self._LABEL_PAGE)
         lay.addWidget(self.stack, 1)
 
@@ -261,39 +229,41 @@ class TaskItem(QWidget):
         self._font_family = theme.font_family
         self._font_size = theme.font_size
         self.dot.set_theme(theme)
-        fs = theme.font_size
-        ff = theme.font_family
-        tc = theme.text_color.name()
-        self.label.setStyleSheet(f"""
-    QLabel#taskText {{
-        background: transparent;
-        border: none;
-        color: {tc};
-        font-size: {fs}px;
-        font-family: "{ff}";
-        padding: 0px;
-    }}
-""")
-        acc = theme.accent_color
-        self.edit.setStyleSheet(f"""
-    QPlainTextEdit#taskEdit {{
-        background: rgba({theme.highlight_color.red()},{theme.highlight_color.green()},{theme.highlight_color.blue()},12);
-        border: 1px solid rgba({acc.red()}, {acc.green()}, {acc.blue()}, 140);
-        border-radius: 8px;
-        color: {tc};
-        font-size: {fs}px;
-        font-family: "{ff}";
-        padding: 5px 7px;
-    }}
-""")
-        font = QFont(ff)
-        font.setPixelSize(fs)
+        font = QFont(theme.font_family)
+        font.setPixelSize(theme.font_size)
         self.label.setFont(font)
-        self.edit.setFont(font)
+        if self.edit is not None:
+            self.edit.setFont(font)
         self._schedule_fit_height()
         self.update()
 
     # ---- 编辑 ----
+    def _ensure_edit(self):
+        """懒创建编辑框:首次进入编辑才实例化。
+
+        大量任务行通常只有少数会被编辑,平时不背重量级的
+        QPlainTextEdit(含独立文档模型),显著降低内存占用。
+        """
+        if self.edit is not None:
+            return self.edit
+        edit = QPlainTextEdit(self.task.text)
+        edit.setObjectName("taskEdit")
+        edit.setPlaceholderText("输入任务…")
+        edit.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+        edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        edit.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        edit.setMinimumWidth(0)
+        edit.setFixedHeight(edit.fontMetrics().lineSpacing() + 14)
+        edit.installEventFilter(self)
+        edit.textChanged.connect(self._fit_edit_height)
+        font = QFont(self._font_family)
+        font.setPixelSize(self._font_size)
+        edit.setFont(font)
+        self.stack.addWidget(edit)
+        self.edit = edit
+        return edit
+
     def start_edit(self):
         """进入编辑态(右键菜单/新建任务/测试均调用)。"""
         if self._locked:
@@ -302,6 +272,7 @@ class TaskItem(QWidget):
             self._finish_drag_gesture()
         else:
             self._cancel_drag_gesture()
+        self._ensure_edit()
         self._reset_edit_scroll_pending = True
         self.stack.setCurrentIndex(self._EDIT_PAGE)
         self.edit.setPlainText(self.task.text)
