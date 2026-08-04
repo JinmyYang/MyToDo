@@ -191,11 +191,13 @@ class TaskItem(QWidget):
             )
             p.setPen(QPen(self._drag_color, 1))
             p.setBrush(fill)
-            p.drawRoundedRect(self.rect().adjusted(4, 1, -4, -1), 9, 9)
+            p.drawRoundedRect(self.rect().adjusted(4, 0, -4, 0), 9, 9)
         elif self._hovered and self.stack.currentIndex() == self._LABEL_PAGE:
             p.setPen(Qt.NoPen)
             p.setBrush(self._hover_color)
-            p.drawRoundedRect(self.rect().adjusted(4, 1, -4, 0), 9, 9)
+            # 从 y=0 开始绘制:分隔线画在上一项的底部,若高亮顶部内缩
+            # 会与上方分隔线之间露出缝隙。
+            p.drawRoundedRect(self.rect().adjusted(4, 0, -4, 0), 9, 9)
         p.setPen(self._sep_color)
         p.drawLine(
             self._separator_left(), self.height() - 1,
