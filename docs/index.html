@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MyToDo —— 桌面任务便签</title>
+<meta name="description" content="MyToDo：半透明无边框的 Windows 桌面任务便签，免安装、无登录、数据全在本地。">
+<link rel="icon" href="img/icon.png">
+<style>
+  :root {
+    --bg: #16201a;
+    --panel: #1e2a22;
+    --text: #e4f0e8;
+    --muted: #8fa89a;
+    --accent: #5ea0ff;
+    --line: rgba(228, 240, 232, 0.12);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Microsoft YaHei UI", "Segoe UI Variable", "Segoe UI", sans-serif;
+    line-height: 1.7;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---- 顶部 ---- */
+  header { padding: 72px 0 48px; text-align: center; }
+  .icon { width: 96px; height: 96px; border-radius: 22px; box-shadow: 0 8px 32px rgba(0,0,0,.4); }
+  h1 { font-size: 42px; margin-top: 20px; letter-spacing: 1px; }
+  .tagline { color: var(--muted); font-size: 17px; margin-top: 8px; }
+  .actions { margin-top: 28px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 13px 34px; border-radius: 10px;
+    font-size: 16px; text-decoration: none; transition: transform .15s, box-shadow .15s;
+  }
+  .btn:hover { transform: translateY(-2px); }
+  .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 4px 18px rgba(94,160,255,.35); }
+  .btn-ghost { border: 1px solid var(--line); color: var(--text); }
+  .version { color: var(--muted); font-size: 13px; margin-top: 14px; }
+
+  section { padding: 44px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: 24px; margin-bottom: 22px; }
+
+  /* ---- 特性 ---- */
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .feature { background: var(--panel); border-radius: 12px; padding: 18px 20px; }
+  .feature b { display: block; margin-bottom: 4px; }
+  .feature span { color: var(--muted); font-size: 14px; }
+
+  /* ---- 截图 ---- */
+  .shots { display: grid; gap: 24px; }
+  figure { background: var(--panel); border-radius: 14px; padding: 18px; }
+  figure img { width: 100%; border-radius: 8px; display: block; }
+  figcaption { color: var(--muted); font-size: 14px; text-align: center; margin-top: 12px; }
+
+  /* ---- 使用说明 / FAQ ---- */
+  ol.steps { padding-left: 22px; }
+  ol.steps li { margin-bottom: 10px; }
+  .faq dt { font-weight: bold; margin-top: 18px; }
+  .faq dd { color: var(--muted); margin-left: 0; }
+  code {
+    background: rgba(228,240,232,.08); padding: 2px 7px;
+    border-radius: 5px; font-size: 14px;
+  }
+
+  footer { padding: 40px 0 56px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; text-align: center; }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <img class="icon" src="img/icon.png" alt="MyToDo 图标">
+    <h1>MyToDo</h1>
+    <p class="tagline">半透明无边框的桌面任务便签，让待办事项安静地留在桌面上。</p>
+    <div class="actions">
+      <a class="btn btn-primary" id="downloadBtn" href="https://github.com/JinmyYang/MyToDo/releases/latest">下载 Windows 版</a>
+      <a class="btn btn-ghost" href="https://github.com/JinmyYang/MyToDo">GitHub 仓库</a>
+    </div>
+    <p class="version">Windows 10 / 11 · 免安装 · 无需注册登录 · 完全本地运行</p>
+  </header>
+
+  <section>
+    <h2>功能亮点</h2>
+    <div class="features">
+      <div class="feature"><b>🪟 半透明悬浮桌面</b><span>无边框窗口透出壁纸，任务与桌面融为一体，透明度可自由调节。</span></div>
+      <div class="feature"><b>📦 解压即用</b><span>无需安装、无需 Python 环境，下载解压后双击运行；数据存在软件目录，拷走整个文件夹就是备份。</span></div>
+      <div class="feature"><b>🎨 主题预设</b><span>深空、暖夜、森林、海洋、薰衣草、素白六套预设，也可自定义颜色、字体与透明度。</span></div>
+      <div class="feature"><b>🔒 锁定模式</b><span>一键锁定窗口，防止误拖拽误编辑；Ctrl+L 快速切换。</span></div>
+      <div class="feature"><b>🕘 历史任务</b><span>完成与删除的任务进入历史记录，可随时恢复或彻底清除。</span></div>
+      <div class="feature"><b>🌏 中英双语</b><span>设置中一键切换中文 / English，重启即生效。</span></div>
+      <div class="feature"><b>🔄 检查更新</b><span>设置内一键检查新版本，对接 GitHub Releases。</span></div>
+      <div class="feature"><b>🛡️ 隐私优先</b><span>无账号、无云端、无遥测，所有数据只保存在你自己的电脑上。</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>界面预览</h2>
+    <div class="shots">
+      <figure>
+        <img src="img/transparent.png" alt="半透明效果">
+        <figcaption>半透明窗口透出桌面壁纸，任务就在眼前，又不喧宾夺主</figcaption>
+      </figure>
+      <figure>
+        <img src="img/main.png" alt="主界面">
+        <figcaption>主界面：JUST DO IT. —— 新建、完成、拖拽排序，一切从简</figcaption>
+      </figure>
+      <figure>
+        <img src="img/settings.png" alt="设置界面">
+        <figcaption>设置：主题预设、颜色字体、透明度、语言与检查更新</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>安装使用</h2>
+    <ol class="steps">
+      <li>点击上方「下载 Windows 版」，进入发布页下载 <code>MyToDo-v*-win64.zip</code>。</li>
+      <li>解压到任意目录（建议不要放在 C 盘系统保护目录，如 <code>Program Files</code>）。</li>
+      <li>双击 <code>MyToDo.exe</code> 即可使用，任务数据自动保存在同目录的 <code>.sticky_tasks</code> 文件夹。</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>常见问题</h2>
+    <dl class="faq">
+      <dt>第一次打开提示“Windows 已保护你的电脑”？</dt>
+      <dd>软件没有购买代码签名证书，点击「更多信息」→「仍要运行」即可；之后的启动不会再提示。</dd>
+      <dt>杀毒软件报警？</dt>
+      <dd>PyInstaller 打包的程序偶尔会被误报，源码全部公开在 GitHub 仓库，可自行审查或从源码运行。</dd>
+      <dt>数据存在哪里？怎么备份？</dt>
+      <dd>全部在软件目录下的 <code>.sticky_tasks</code> 文件夹（tasks.json 任务、settings.json 设置）。复制这个文件夹即完成备份。</dd>
+      <dt>支持 Mac / Linux 吗？</dt>
+      <dd>目前只提供 Windows 版。源码基于 Python + PySide6，理论上可自行在其他平台打包。</dd>
+    </dl>
+  </section>
+
+  <footer>
+    MyToDo · 开源免费 · <a href="https://github.com/JinmyYang/MyToDo">GitHub</a> · <a href="https://github.com/JinmyYang/MyToDo/releases">全部版本</a>
+  </footer>
+
+</div>
+
+<script>
+  // 下载按钮自动指向最新 Release 的 zip 附件
+  fetch("https://api.github.com/repos/JinmyYang/MyToDo/releases/latest")
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      var asset = (data.assets || []).find(function (a) { return a.name.endsWith(".zip"); });
+      if (asset) document.getElementById("downloadBtn").href = asset.browser_download_url;
+    })
+    .catch(function () { /* API 不通时保留发布页链接 */ });
+</script>
+</body>
+</html>
