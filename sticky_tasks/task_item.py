@@ -11,6 +11,7 @@ from PySide6.QtGui import (
 )
 
 from .app_settings import Theme
+from .i18n import t
 
 ZWSP = "​"  # 零宽空格 U+200B,提供 QLabel 任意字符处的断行点
 
@@ -41,7 +42,7 @@ class DotButton(QWidget):
         self.setFixedSize(18, 18)
         self.setCursor(QCursor(Qt.PointingHandCursor))
         self.setFocusPolicy(Qt.NoFocus)
-        self.setToolTip("标记为完成")
+        self.setToolTip(t("task.mark_done"))
         self._hovered = False
         self._normal_color = QColor("#55555f")
         self._accent_color = QColor("#5ea0ff")
@@ -250,7 +251,7 @@ class TaskItem(QWidget):
             return self.edit
         edit = QPlainTextEdit(self.task.text)
         edit.setObjectName("taskEdit")
-        edit.setPlaceholderText("输入任务…")
+        edit.setPlaceholderText(t("task.edit_placeholder"))
         edit.setLineWrapMode(QPlainTextEdit.WidgetWidth)
         edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         edit.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -493,8 +494,8 @@ class TaskItem(QWidget):
                 color: #ffffff;
             }
         """)
-        act_edit = menu.addAction("编辑")
-        act_del = menu.addAction("删除")
+        act_edit = menu.addAction(t("task.edit"))
+        act_del = menu.addAction(t("task.delete"))
         chosen = menu.exec(event.globalPos())
         if chosen is act_edit:
             self.start_edit()

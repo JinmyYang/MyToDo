@@ -1,4 +1,4 @@
-# 桌面任务便签
+# MyToDo —— 桌面任务便签
 
 一个本地运行的 Windows 桌面任务便签软件,半透明无边框地显示在桌面上,能看到壁纸,类似精简版 Microsoft To Do。
 
@@ -16,6 +16,7 @@
 - 🔎 **字体搜索**:输入字体名即可筛选,不再显示字体符号预览
 - 🎨 **自定义预设**:颜色与外观可保存为自己的预设,自定义色会记住
 - 📐 **记住窗口**:重启后恢复上次的位置和大小
+- 🔄 **检查更新**:设置窗口内一键检查新版本(对接 GitHub Releases)
 - 🚫 **无登录、无用户管理、无每日重置**:开箱即用
 
 ## 安装
@@ -81,11 +82,14 @@ QT_QPA_PLATFORM=offscreen python -m pytest tests/test_gui_smoke.py -v
 project0711/
 ├── main.py                  # 入口
 ├── requirements.txt
+├── assets/
+│   └── icon.ico             # 应用图标
 ├── sticky_tasks/
 │   ├── app_paths.py         # 数据/日志等路径解析
 │   ├── task_store.py        # 数据层(Task / TaskStore)
 │   ├── json_io.py           # 原子文件写入
 │   ├── app_settings.py      # 外观设置模型与主题派生
+│   ├── updater.py           # 检查更新(GitHub Releases API)
 │   ├── task_item.py         # 任务项 widget(圆点 + 可编辑文本)
 │   ├── completed_panel.py   # 已完成面板
 │   ├── history_window.py    # 历史任务批量管理窗口
@@ -94,6 +98,7 @@ project0711/
 └── tests/
     ├── test_app_settings.py # 外观设置测试
     ├── test_task_store.py   # 数据层单测
+    ├── test_updater.py      # 检查更新测试
     └── test_gui_smoke.py    # GUI 冒烟测试
 ```
 

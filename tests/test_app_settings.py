@@ -115,3 +115,100 @@ def test_custom_colors_and_preset_persist_roundtrip(app, tmp_path):
     assert loaded.bg_color == "#334455"
     assert loaded.text_color == "#f1f2f3"
     assert loaded.font_size == 17
+
+
+def test_language_persists_roundtrip(tmp_path):
+    path = tmp_path / "settings.json"
+    settings = AppSettings(language="en")
+    settings.save(path)
+    assert AppSettings.load(path).language == "en"
+
+
+def test_language_default_is_zh():
+    assert AppSettings().language == "zh"
+
+
+def test_language_invalid_value_rejected(tmp_path):
+    path = tmp_path / "settings.json"
+    path.write_text('{"language": "fr"}', encoding="utf-8")
+    assert AppSettings.load(path).language == "zh"
+
+
+def test_settings_window_language_combo_reflects_setting(app):
+    settings = AppSettings(language="en")
+    window = SettingsWindow(settings)
+    assert window._lang_combo.currentData() == "en"
+    assert window.windowTitle() == "Settings"
+
+    zh_settings = AppSettings(language="zh")
+    zh_window = SettingsWindow(zh_settings)
+    assert zh_window._lang_combo.currentData() == "zh"
+    assert zh_window.windowTitle() == "设置"
+
+
+# ---- 语言切换两段式交互(模拟弹窗,无头) ----
+def _patch_message_boxes(monkeypatch, answers):
+    """模拟 QMessageBox:answers 按弹窗出现顺序作答,True=第一个按钮(AcceptRole)。"""
+    from PySide6.QtWidgets import QMessageBox as MB
+
+    state = {"calls": 0}
+
+    def fake_exec(self):
+        ans = answers[min(state["calls"], len(answers) - 1)]
+        state["calls"] += 1
+        role = MB.AcceptRole if ans else MB.RejectRole
+        picked = None
+        for btn in self.buttons():
+            if self.buttonRole(btn) == role:
+                picked = btn
+                break
+        self._fake_picked = picked
+        return 0
+
+    monkeypatch.setattr(MB, "exec", fake_exec)
+    monkeypatch.setattr(
+        MB, "clickedButton", lambda self: getattr(self, "_fake_picked", None),
+    )
+    return state
+
+
+def test_language_cancel_reverts_combo(app, monkeypatch):
+    from sticky_tasks.i18n import set_language
+
+    _patch_message_boxes(monkeypatch, [False])  # 点"取消"
+    settings = AppSettings(language="zh")
+    window = SettingsWindow(settings)
+    window._lang_combo.setCurrentIndex(1)
+    assert settings.language == "zh"          # 未保存
+    assert window._lang_combo.currentIndex() == 0  # 下拉框回退
+    set_language("zh")
+
+
+def test_language_confirm_later_saves_without_restart(app, monkeypatch):
+    from sticky_tasks import settings_dialog
+    from sticky_tasks.i18n import set_language
+
+    _patch_message_boxes(monkeypatch, [True, False])  # 确认 + 稍后
+    restarted = []
+    monkeypatch.setattr(settings_dialog, "restart_app", lambda: restarted.append(True))
+    settings = AppSettings(language="zh")
+    window = SettingsWindow(settings)
+    window._lang_combo.setCurrentIndex(1)
+    assert settings.language == "en"
+    assert restarted == []                    # 未触发重启
+    set_language("zh")
+
+
+def test_language_confirm_restart_now_calls_restart(app, monkeypatch):
+    from sticky_tasks import settings_dialog
+    from sticky_tasks.i18n import set_language
+
+    _patch_message_boxes(monkeypatch, [True, True])  # 确认 + 立即重启
+    restarted = []
+    monkeypatch.setattr(settings_dialog, "restart_app", lambda: restarted.append(True))
+    settings = AppSettings(language="zh")
+    window = SettingsWindow(settings)
+    window._lang_combo.setCurrentIndex(1)
+    assert settings.language == "en"
+    assert restarted == [True]                # 触发了重启
+    set_language("zh")

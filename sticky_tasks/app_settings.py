@@ -103,6 +103,7 @@ class AppSettings:
     font_family: str = "Segoe UI Variable"
     font_size: int = 13
     bg_opacity: int = 240
+    language: str = "zh"  # zh / en,界面语言,重启后生效
     window_x: int | None = None
     window_y: int | None = None
     window_width: int | None = None
@@ -139,6 +140,9 @@ class AppSettings:
         for key in ("bg_color", "text_color", "font_family"):
             if key in data and isinstance(data[key], str):
                 setattr(s, key, data[key])
+        lang = data.get("language")
+        if isinstance(lang, str) and lang in ("zh", "en"):
+            s.language = lang
         for key in ("font_size", "bg_opacity"):
             if key in data and type(data[key]) is int:
                 setattr(s, key, data[key])

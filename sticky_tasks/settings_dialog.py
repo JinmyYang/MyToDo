@@ -1,19 +1,23 @@
-"""设置窗口:自定义背景色、字体色、字体、字号、透明度。
+"""设置窗口:外观、语言、数据管理与关于。
 
 独立非模态窗口,不遮挡主界面;任何修改即时生效(实时预览)。
 颜色使用系统选择器，字体直接在设置窗口的下拉框中选择。
 """
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame,
     QColorDialog, QComboBox, QSlider, QSpinBox, QCompleter,
-    QAbstractSpinBox, QLineEdit,
+    QAbstractSpinBox, QLineEdit, QMessageBox,
 )
 # 注:QCompleter 仅用其枚举常量配置 combo 内置补全器,不另建实例
-from PySide6.QtCore import Qt, Signal, QEvent
-from PySide6.QtGui import QColor, QCursor, QFontDatabase
+from PySide6.QtCore import Qt, Signal, QEvent, QUrl
+from PySide6.QtGui import QColor, QCursor, QFontDatabase, QDesktopServices
 
+from . import APP_NAME, APP_VERSION
+from . import updater
 from .app_settings import AppSettings, MIN_BG_OPACITY
+from .i18n import LANG_EN, LANG_ZH, set_language, t
+from .restart import restart_app
 
 WINDOW_QSS = """
 SettingsWindow {
@@ -105,6 +109,13 @@ class _NoWheelSpinBox(QSpinBox):
         event.ignore()
 
 
+class _NoWheelSlider(QSlider):
+    """禁用滚轮调透明度:悬停时滚轮一动就改值,太容易误触。"""
+
+    def wheelEvent(self, event):
+        event.ignore()
+
+
 class SettingsWindow(QWidget):
     """外观设置独立窗口(非模态,实时预览)。"""
 
@@ -113,7 +124,10 @@ class SettingsWindow(QWidget):
 
     def __init__(self, settings: AppSettings, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("外观设置")
+        # 窗口文案跟随 settings 里的语言(启动时 main.py 已全局同步,
+        # 这里再确保窗口自身始终与自己的 settings 一致)
+        set_language(settings.language)
+        self.setWindowTitle(t("settings.title"))
         self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint)
         self.setStyleSheet(WINDOW_QSS)
         self.setFixedWidth(300)
@@ -124,15 +138,10 @@ class SettingsWindow(QWidget):
     def _build_ui(self):
         root = QVBoxLayout(self)
         root.setContentsMargins(20, 18, 20, 16)
-        root.setSpacing(14)
-
-        # 标题
-        title = QLabel("外观设置")
-        title.setObjectName("sectionTitle")
-        root.addWidget(title)
+        root.setSpacing(10)
 
         # ---- 预设主题 ----
-        root.addWidget(self._row_label("预设"))
+        root.addWidget(self._row_label(t("settings.presets")))
         preset_row = QHBoxLayout()
         preset_row.setSpacing(8)
         for p in PRESETS:
@@ -161,33 +170,34 @@ class SettingsWindow(QWidget):
         preset_row.addStretch()
         root.addLayout(preset_row)
 
-        # ---- 背景颜色 ----
-        root.addWidget(self._row_label("背景颜色"))
-        bg_row = QHBoxLayout()
+        # ---- 背景颜色 / 字体颜色(并列两列) ----
+        color_row = QHBoxLayout()
+        color_row.setSpacing(14)
+        bg_col = QVBoxLayout()
+        bg_col.setSpacing(6)
+        bg_col.addWidget(self._row_label(t("settings.bg_color")))
         self._bg_btn = self._make_color_btn(QColor(self._settings.bg_color))
         self._bg_btn.clicked.connect(self._pick_bg_color)
-        bg_row.addWidget(self._bg_btn)
-        bg_row.addStretch()
-        root.addLayout(bg_row)
-
-        # ---- 字体颜色 ----
-        root.addWidget(self._row_label("字体颜色"))
-        txt_row = QHBoxLayout()
+        bg_col.addWidget(self._bg_btn)
+        color_row.addLayout(bg_col, 1)
+        txt_col = QVBoxLayout()
+        txt_col.setSpacing(6)
+        txt_col.addWidget(self._row_label(t("settings.text_color")))
         self._txt_btn = self._make_color_btn(QColor(self._settings.text_color))
         self._txt_btn.clicked.connect(self._pick_text_color)
-        txt_row.addWidget(self._txt_btn)
-        txt_row.addStretch()
-        root.addLayout(txt_row)
+        txt_col.addWidget(self._txt_btn)
+        color_row.addLayout(txt_col, 1)
+        root.addLayout(color_row)
 
         # ---- 字体 ----
-        root.addWidget(self._row_label("字体"))
+        root.addWidget(self._row_label(t("settings.font")))
         self._font_families = sorted(QFontDatabase.families(), key=str.casefold)
         self._font_combo = _NoWheelComboBox()
         self._font_combo.setEditable(True)
         self._font_combo.setInsertPolicy(QComboBox.NoInsert)
         self._font_combo.addItems(self._font_families)
         self._font_combo.setCurrentText(self._settings.font_family)
-        self._font_combo.lineEdit().setPlaceholderText("搜索字体")
+        self._font_combo.lineEdit().setPlaceholderText(t("settings.font_search"))
         # 直接配置内置补全器(可编辑 combo 自带),不再另建 QCompleter:
         # 少一份 500+ 字体项的补全模型,打开设置窗口更快。
         completer = self._font_combo.completer()
@@ -199,7 +209,7 @@ class SettingsWindow(QWidget):
         root.addWidget(self._font_combo)
 
         # ---- 字号 ----
-        root.addWidget(self._row_label("字号"))
+        root.addWidget(self._row_label(t("settings.font_size")))
         size_row = QHBoxLayout()
         self._size_spin = _NoWheelSpinBox()
         self._size_spin.setRange(9, 24)
@@ -211,9 +221,9 @@ class SettingsWindow(QWidget):
         root.addLayout(size_row)
 
         # ---- 背景透明度 ----
-        root.addWidget(self._row_label("背景透明度"))
+        root.addWidget(self._row_label(t("settings.bg_opacity")))
         op_row = QHBoxLayout()
-        self._op_slider = QSlider(Qt.Horizontal)
+        self._op_slider = _NoWheelSlider(Qt.Horizontal)
         self._op_slider.setRange(MIN_BG_OPACITY, 255)
         self._op_slider.setValue(self._settings.bg_opacity)
         op_row.addWidget(self._op_slider, 1)
@@ -223,29 +233,58 @@ class SettingsWindow(QWidget):
         op_row.addWidget(self._op_label)
         root.addLayout(op_row)
 
-        # ---- 操作 ----
-        root.addSpacing(8)
+        # ---- 保存自定义预设(外观部分收尾,右对齐) ----
+        save_row = QHBoxLayout()
+        save_row.addStretch()
+        save_preset_btn = QPushButton(t("settings.save_preset_btn"))
+        save_preset_btn.setObjectName("actionBtn")
+        save_preset_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        save_preset_btn.clicked.connect(self._save_custom_preset)
+        save_row.addWidget(save_preset_btn)
+        root.addLayout(save_row)
+
+        root.addWidget(self._separator())
+
+        # ---- 语言 ----
+        lang_row = QHBoxLayout()
+        lang_row.addWidget(self._row_label(t("settings.language")))
+        self._lang_combo = _NoWheelComboBox()
+        self._lang_combo.addItem("中文", LANG_ZH)
+        self._lang_combo.addItem("English", LANG_EN)
+        self._lang_combo.setCurrentIndex(
+            1 if self._settings.language == LANG_EN else 0,
+        )
+        self._lang_combo.currentIndexChanged.connect(self._on_language_changed)
+        lang_row.addWidget(self._lang_combo)
+        lang_row.addStretch()
+        root.addLayout(lang_row)
+
+        root.addWidget(self._separator())
+
+        # ---- 查看历史任务(右对齐) ----
         btn_row = QHBoxLayout()
-        history_btn = QPushButton("查看历史任务")
+        btn_row.addStretch()
+        history_btn = QPushButton(t("settings.history_btn"))
         history_btn.setObjectName("actionBtn")
         history_btn.setCursor(QCursor(Qt.PointingHandCursor))
         history_btn.clicked.connect(self.history_requested)
         btn_row.addWidget(history_btn)
-        save_preset_btn = QPushButton("保存为自定义预设")
-        save_preset_btn.setObjectName("actionBtn")
-        save_preset_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        save_preset_btn.clicked.connect(self._save_custom_preset)
-        btn_row.addWidget(save_preset_btn)
         root.addLayout(btn_row)
 
-        reset_row = QHBoxLayout()
-        reset_row.addStretch()
-        reset_btn = QPushButton("恢复默认")
-        reset_btn.setObjectName("actionBtn")
-        reset_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        reset_btn.clicked.connect(self._reset)
-        reset_row.addWidget(reset_btn)
-        root.addLayout(reset_row)
+        root.addWidget(self._separator())
+
+        # ---- 版本与检查更新 ----
+        about_row = QHBoxLayout()
+        version_label = QLabel(f"{APP_NAME}  v{APP_VERSION}")
+        version_label.setStyleSheet("color: #6f6f7a; font-size: 11px;")
+        about_row.addWidget(version_label)
+        about_row.addStretch()
+        update_btn = QPushButton(t("settings.check_update_btn"))
+        update_btn.setObjectName("actionBtn")
+        update_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        update_btn.clicked.connect(self._check_update)
+        about_row.addWidget(update_btn)
+        root.addLayout(about_row)
 
         self._install_click_blank_clear_focus()
 
@@ -267,7 +306,78 @@ class SettingsWindow(QWidget):
                 focused.clearFocus()
         return super().eventFilter(obj, event)
 
+    # ---- 语言(两段式确认:确认切换 → 提示重启) ----
+    def _on_language_changed(self, index):
+        lang = self._lang_combo.itemData(index)
+        if lang == self._settings.language:
+            return
+        old_index = 1 if self._settings.language == LANG_EN else 0
+        lang_name = "English" if lang == LANG_EN else "中文"
+
+        # 第一段:用旧语言确认,用户看得懂才能做决定
+        box = QMessageBox(self)
+        box.setWindowTitle(APP_NAME)
+        box.setText(t("settings.lang_confirm", lang=lang_name))
+        confirm_btn = box.addButton(t("common.confirm"), QMessageBox.AcceptRole)
+        box.addButton(t("common.cancel"), QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is not confirm_btn:
+            # 取消:下拉框回退,不保存任何改动
+            self._lang_combo.blockSignals(True)
+            self._lang_combo.setCurrentIndex(old_index)
+            self._lang_combo.blockSignals(False)
+            return
+
+        self._settings.language = lang
+        set_language(lang)
+        self.changed.emit()
+
+        # 第二段:用新语言提示,顺带预览新语言效果
+        box2 = QMessageBox(self)
+        box2.setWindowTitle(APP_NAME)
+        box2.setText(t("settings.lang_restart"))
+        restart_btn = box2.addButton(t("common.restart_now"), QMessageBox.AcceptRole)
+        box2.addButton(t("common.later"), QMessageBox.RejectRole)
+        box2.exec()
+        if box2.clickedButton() is restart_btn:
+            restart_app()
+
+    # ---- 检查更新 ----
+    def _check_update(self):
+        try:
+            info = updater.check_for_update(APP_VERSION)
+        except updater.UpdateError as exc:
+            QMessageBox.warning(self, APP_NAME, str(exc))
+            return
+        if info is None:
+            QMessageBox.information(
+                self, APP_NAME, t("settings.up_to_date", version=APP_VERSION),
+            )
+            return
+        box = QMessageBox(self)
+        box.setWindowTitle(APP_NAME)
+        box.setText(
+            t(
+                "settings.new_version",
+                latest=info["version"], current=APP_VERSION,
+            ),
+        )
+        if info["notes"]:
+            box.setInformativeText(info["notes"][:500])
+        open_btn = box.addButton(t("settings.open_download"), QMessageBox.AcceptRole)
+        box.addButton(t("settings.close"), QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is open_btn and info["url"]:
+            QDesktopServices.openUrl(QUrl(info["url"]))
+
     # ---- 工具 ----
+    def _separator(self):
+        """分区之间的细横线(不用文字标题,版面更干净)。"""
+        sep = QFrame()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background: rgba(255, 255, 255, 18);")
+        return sep
+
     def _row_label(self, text):
         lbl = QLabel(text)
         lbl.setStyleSheet("color: #8a8a94; font-size: 12px;")
@@ -304,7 +414,7 @@ class SettingsWindow(QWidget):
     # ---- 槽 ----
     def _pick_bg_color(self):
         color = self._show_color_dialog(
-            QColor(self._settings.bg_color), "选择背景颜色",
+            QColor(self._settings.bg_color), t("settings.pick_bg"),
         )
         if color.isValid():
             self._bg_color = color
@@ -315,7 +425,7 @@ class SettingsWindow(QWidget):
 
     def _pick_text_color(self):
         color = self._show_color_dialog(
-            QColor(self._settings.text_color), "选择字体颜色",
+            QColor(self._settings.text_color), t("settings.pick_text"),
         )
         if color.isValid():
             self._txt_color = color
@@ -385,7 +495,8 @@ class SettingsWindow(QWidget):
         preset = self._settings.custom_preset
         color = preset["bg"] if preset is not None else "#34353d"
         self._custom_preset_btn.setToolTip(
-            "自定义预设" if preset is not None else "尚未保存自定义预设"
+            t("settings.custom_preset_tip") if preset is not None
+            else t("settings.no_custom_preset"),
         )
         self._custom_preset_btn.setEnabled(preset is not None)
         self._custom_preset_btn.setStyleSheet(
@@ -416,24 +527,6 @@ class SettingsWindow(QWidget):
             for index in range(QColorDialog.customCount())
             if QColorDialog.customColor(index).isValid()
         ]
-
-    def _reset(self):
-        defaults = AppSettings()
-        self._bg_color = QColor(defaults.bg_color)
-        self._txt_color = QColor(defaults.text_color)
-        self._paint_color_btn(self._bg_btn, self._bg_color)
-        self._paint_color_btn(self._txt_btn, self._txt_color)
-        self._font_combo.blockSignals(True)
-        self._size_spin.blockSignals(True)
-        self._op_slider.blockSignals(True)
-        self._font_combo.setCurrentText(defaults.font_family)
-        self._size_spin.setValue(defaults.font_size)
-        self._op_slider.setValue(defaults.bg_opacity)
-        self._font_combo.blockSignals(False)
-        self._size_spin.blockSignals(False)
-        self._op_slider.blockSignals(False)
-        self._op_label.setText(f"{int(defaults.bg_opacity / 255 * 100)}%")
-        self._emit_changed()
 
     # ---- 初始化内部状态(从 settings 读取) ----
     @property

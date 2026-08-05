@@ -4,7 +4,7 @@
 
 ## 项目概述
 
-project0711 — 一个**桌面任务便签软件**(本地运行,Windows 自用)。
+project0711 — **MyToDo**，一个**桌面任务便签软件**(本地运行,Windows 自用)。
 
 - 半透明、无边框、普通窗口层级(非置顶),能看到壁纸
 - 点加号创建任务,双击任务文字编辑
@@ -14,6 +14,7 @@ project0711 — 一个**桌面任务便签软件**(本地运行,Windows 自用)�
 - 外观可自定义(主题/字体/字号/透明度),支持保存预设
 - 锁定模式隐藏编辑控件,避免误操作
 - 数据持久化到 JSON,关掉重开任务还在(不过夜刷新)
+- 设置窗口内可检查更新(对接 GitHub Releases,仓库地址待发布时填写)
 - 不需要用户管理、不需要每日重置
 
 - **状态**: 开发中
@@ -24,6 +25,7 @@ project0711 — 一个**桌面任务便签软件**(本地运行,Windows 自用)�
 - 语言: Python 3.13
 - GUI 框架: PySide6 (Qt for Python) 6.11
 - 数据持久化: JSON 文件(存于软件目录下的 `.sticky_tasks/tasks.json`,原子写入)
+- 版本与名称: `sticky_tasks/__init__.py` 中的 `APP_NAME` / `APP_VERSION`(发 Release 时 tag 用 v{版本号})
 - 测试: pytest
 - 包管理: pip + requirements.txt
 
@@ -34,11 +36,14 @@ project0711/
 ├── CLAUDE.md            # 本文件
 ├── README.md            # 功能与使用说明(用户视角)
 ├── requirements.txt
-├── main.py              # 入口:启动 QApplication + MainWindow
+├── assets/
+│   └── icon.ico             # 应用图标
+├── main.py              # 入口:启动 QApplication + MainWindow(含崩溃日志钩子)
 ├── sticky_tasks/        # 应用包
-│   ├── __init__.py
+│   ├── __init__.py          # APP_NAME / APP_VERSION
 │   ├── app_paths.py         # 数据/日志等路径解析
 │   ├── app_settings.py      # 外观设置模型与主题派生
+│   ├── updater.py           # 检查更新(GitHub Releases API,仓库地址待填)
 │   ├── task_store.py        # 数据层:Task / TaskStore(增删、完成、恢复、JSON 持久化)
 │   ├── json_io.py           # 原子文件写入
 │   ├── task_item.py         # UI:单个任务项(圆点 + 可编辑文本)
@@ -49,6 +54,7 @@ project0711/
 └── tests/
     ├── test_app_paths.py    # 路径解析测试
     ├── test_app_settings.py # 外观设置测试
+    ├── test_updater.py      # 检查更新测试
     ├── test_task_store.py   # 数据层单元测试
     └── test_gui_smoke.py    # GUI 冒烟测试(offscreen 平台)
 ```

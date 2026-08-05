@@ -16,6 +16,8 @@ from PySide6.QtGui import (
     QShortcut, QKeySequence,
 )
 
+from . import APP_NAME
+from .i18n import t
 from .task_store import TaskStore
 from .task_item import TaskItem
 from .completed_panel import CompletedPanel
@@ -145,6 +147,15 @@ MIN_W, MIN_H = 220, 200
 PANEL_H = 160       # 已完成面板展开时向下扩展的高度
 
 
+def _on_segment(a: QPointF, b: QPointF, dist: float) -> QPointF:
+    """从 a 沿 a→b 方向取距离 dist 的点(螺母图标削角/凹曲线用)。"""
+    dx, dy = b.x() - a.x(), b.y() - a.y()
+    length = math.hypot(dx, dy)
+    if length == 0:
+        return QPointF(a)
+    return QPointF(a.x() + dx / length * dist, a.y() + dy / length * dist)
+
+
 
 
 class LockButton(QWidget):
@@ -166,8 +177,8 @@ class LockButton(QWidget):
         self.update()
 
     def _sync_tooltip(self):
-        action = "解锁窗口" if self._locked else "锁定窗口"
-        self.setToolTip(f"{action} (Ctrl+L)")
+        action = t("main.lock_action_on") if self._locked else t("main.lock_action_off")
+        self.setToolTip(t("main.lock_tooltip", action=action))
 
     def paintEvent(self, event):
         p = QPainter(self)
@@ -271,7 +282,7 @@ class MainWindow(QWidget):
         self._task_drag_scroll_timer.setInterval(40)
         self._task_drag_scroll_timer.timeout.connect(self._auto_scroll_task_drag)
 
-        self.setWindowTitle("桌面便签")
+        self.setWindowTitle(APP_NAME)
         self.setFont(QFont(self.theme.font_family, 10))
         # 普通窗口层级(不再置顶),仅无边框
         self.setWindowFlags(Qt.FramelessWindowHint)
@@ -323,12 +334,12 @@ class MainWindow(QWidget):
         self._inline_add_btn.setFixedHeight(36)
         self._inline_add_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self._inline_add_btn.setFocusPolicy(Qt.NoFocus)
-        self._inline_add_btn.setToolTip("新建任务 (Ctrl+N)")
+        self._inline_add_btn.setToolTip(t("main.new_tooltip"))
         self._inline_add_btn.clicked.connect(self.add_task)
         self.list_layout.addWidget(self._inline_add_btn)
 
         # ---- 空列表引导提示(紧跟加号之后;不占用任务的索引空间)----
-        self._empty_hint = QLabel("暂无任务 —— 点击上方 + 或按 Ctrl+N 新建")
+        self._empty_hint = QLabel(t("main.empty_hint"))
         self._empty_hint.setObjectName("emptyHint")
         self._empty_hint.setVisible(False)
         self.list_layout.addWidget(self._empty_hint)
@@ -344,7 +355,7 @@ class MainWindow(QWidget):
         footer_layout.setContentsMargins(0, 0, 6, 0)
         footer_layout.setSpacing(0)
 
-        self.footer_btn = QPushButton("已完成 (0)")
+        self.footer_btn = QPushButton(t("main.completed_count", n=0))
         self.footer_btn.setObjectName("footerBtn")
         self.footer_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self.footer_btn.setFocusPolicy(Qt.NoFocus)
@@ -358,7 +369,7 @@ class MainWindow(QWidget):
         self.settings_btn.setFixedSize(28, 28)
         self.settings_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self.settings_btn.setFocusPolicy(Qt.NoFocus)
-        self.settings_btn.setToolTip("外观设置")
+        self.settings_btn.setToolTip(t("main.settings_tooltip"))
         self.settings_btn.setIcon(QIcon(self._gear_pixmap()))
         self.settings_btn.setIconSize(QSize(16, 16))
         self.settings_btn.clicked.connect(self.open_settings)
@@ -767,7 +778,7 @@ class MainWindow(QWidget):
 
     def _footer_text(self):
         n = len(self.store.completed_tasks())
-        return f"已完成  {n}"
+        return t("main.completed_count", n=n)
 
     def _update_footer(self):
         self.footer_btn.setText(self._footer_text())
@@ -807,7 +818,11 @@ class MainWindow(QWidget):
         return pm
 
     def _gear_pixmap(self, size=16, color=None):
-        """画矢量齿轮图标。"""
+        """画设置图标:凹边削角螺母造型 + 中心小圆孔(定稿 nut3_B)。
+
+        尖头六边形(上下为角),每条边用二次贝塞尔曲线向中心内凹,
+        六个角各削去一小段平面,细线条 + 小圆孔。
+        """
         if color is None:
             color = self.theme.icon_color
         dpr = self._screen_dpr()
@@ -816,23 +831,40 @@ class MainWindow(QWidget):
         pm.fill(Qt.transparent)
         p = QPainter(pm)
         p.setRenderHint(QPainter.Antialiasing)
-        pen = QPen(color, 1.5)
+        cx = cy = size / 2.0
+        center = QPointF(cx, cy)
+        hex_r = size * 0.44          # 顶点半径
+        stroke_w = max(1.0, size * 0.085)  # 细线条
+        chamfer = size * 0.10        # 削角长度
+        depth = size * 0.12          # 边中点向中心内凹的深度
+        # 尖头六边形顶点(上下为角)
+        verts = [
+            QPointF(
+                cx + math.cos(math.radians(90 + i * 60)) * hex_r,
+                cy + math.sin(math.radians(90 + i * 60)) * hex_r,
+            )
+            for i in range(6)
+        ]
+        path = QPainterPath()
+        path.moveTo(_on_segment(verts[0], verts[1], chamfer))
+        for i in range(6):
+            a = verts[i]
+            b = verts[(i + 1) % 6]
+            nxt = verts[(i + 2) % 6]
+            # 边 a→b 的内凹曲线:控制点 = 边中点向中心拉 depth
+            mid = QPointF((a.x() + b.x()) / 2, (a.y() + b.y()) / 2)
+            path.quadTo(_on_segment(mid, center, depth), _on_segment(b, a, chamfer))
+            # 顶点 b 的削角小平面(微圆角由 RoundJoin 提供)
+            path.lineTo(_on_segment(b, nxt, chamfer))
+        path.closeSubpath()
+        pen = QPen(color, stroke_w)
         pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
         p.setPen(pen)
         p.setBrush(Qt.NoBrush)
-        cx = cy = size / 2.0
-        # 外圈
-        p.drawEllipse(QPointF(cx, cy), size * 0.28, size * 0.28)
-        # 内圈
-        p.drawEllipse(QPointF(cx, cy), size * 0.12, size * 0.12)
-        # 齿:6 条短线从外圈向外辐射
-        for i in range(6):
-            angle = math.radians(i * 60)
-            x1 = cx + math.cos(angle) * size * 0.30
-            y1 = cy + math.sin(angle) * size * 0.30
-            x2 = cx + math.cos(angle) * size * 0.44
-            y2 = cy + math.sin(angle) * size * 0.44
-            p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+        p.drawPath(path)
+        # 中心小圆孔
+        p.drawEllipse(center, size * 0.11, size * 0.11)
         p.end()
         return pm
 
@@ -960,8 +992,8 @@ class MainWindow(QWidget):
         """上方栏右键菜单:锁定时可解锁,始终可退出。"""
         menu = QMenu(self)
         if self._locked:
-            menu.addAction("解锁", self.unlock)
-        menu.addAction("退出", QApplication.quit)
+            menu.addAction(t("main.menu_unlock"), self.unlock)
+        menu.addAction(t("main.menu_quit"), QApplication.quit)
         menu.exec(global_pos)
 
     # ---- 边缘 8 方向 resize ----

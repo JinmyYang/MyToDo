@@ -13,5 +13,6 @@ class SingleInstance:
         self._lock = QLockFile(str(data_dir / "app.lock"))
         self._lock.setStaleLockTime(0)  # 崩溃残留锁由 QLockFile 自动识别清理
 
-    def try_acquire(self) -> bool:
-        return self._lock.tryLock(0)  # 0 = 不等待,拿不到立即返回
+    def try_acquire(self, timeout_ms: int = 0) -> bool:
+        # 0 = 不等待,拿不到立即返回;重启场景传正值等待旧进程释放锁
+        return self._lock.tryLock(timeout_ms)
