@@ -683,6 +683,10 @@ class MainWindow(QWidget):
         self._task_drag_order_changed = False
 
     def on_delete(self, task_id, permanent=False):
+        task = self.store.get(task_id)
+        # 从未有过内容的任务(如点 + 后未输入直接取消)不留历史记录
+        if task is not None and task.text.strip() == "":
+            permanent = True
         if permanent:
             deleted = self.store.permanent_delete([task_id])
         else:

@@ -273,18 +273,18 @@ class SettingsWindow(QWidget):
 
         root.addWidget(self._separator())
 
-        # ---- 版本与检查更新 ----
-        about_row = QHBoxLayout()
+        # ---- 版本与检查更新(版本号在上,按钮在下方左对齐) ----
         version_label = QLabel(f"{APP_NAME}  v{APP_VERSION}")
         version_label.setStyleSheet("color: #6f6f7a; font-size: 11px;")
-        about_row.addWidget(version_label)
-        about_row.addStretch()
+        root.addWidget(version_label)
+        update_row = QHBoxLayout()
         update_btn = QPushButton(t("settings.check_update_btn"))
         update_btn.setObjectName("actionBtn")
         update_btn.setCursor(QCursor(Qt.PointingHandCursor))
         update_btn.clicked.connect(self._check_update)
-        about_row.addWidget(update_btn)
-        root.addLayout(about_row)
+        update_row.addWidget(update_btn)
+        update_row.addStretch()
+        root.addLayout(update_row)
 
         self._install_click_blank_clear_focus()
 

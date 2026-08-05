@@ -110,6 +110,27 @@ def test_empty_task_completed_is_deleted(app):
         assert store.get(empty_id) is None
 
 
+def test_empty_new_task_leaves_no_history_record(app):
+    """点 + 后未输入任何内容就失焦,不应在历史记录留下空任务。"""
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        w = MainWindow(store, settings_path=root / "settings.json")
+        w.show()
+        app.processEvents()
+
+        w.add_task()
+        app.processEvents()
+        empty_item = list(w._active_items.values())[-1]
+        empty_item.start_edit()
+        empty_item._on_editing_finished()  # 模拟未输入直接点空白处失焦
+        app.processEvents()
+
+        assert len(w._active_items) == 0
+        assert store.history_tasks() == []
+        assert store.tasks == []
+
+
 def test_persistence_reload_restores_ui(app):
     """重开后 UI 正确恢复活跃/已完成任务。"""
     with tempfile.TemporaryDirectory() as d:

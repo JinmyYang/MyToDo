@@ -96,13 +96,13 @@ class Theme:
 
 @dataclass
 class AppSettings:
-    """用户设置,持久化到 JSON。"""
+    """用户设置,持久化到 JSON。默认外观为预设「森林」。"""
 
-    bg_color: str = "#25262c"
-    text_color: str = "#e9e9ef"
-    font_family: str = "Segoe UI Variable"
+    bg_color: str = "#1e2a22"
+    text_color: str = "#e4f0e8"
+    font_family: str = "Microsoft YaHei UI"
     font_size: int = 13
-    bg_opacity: int = 240
+    bg_opacity: int = 238
     language: str = "zh"  # zh / en,界面语言,重启后生效
     window_x: int | None = None
     window_y: int | None = None
@@ -176,9 +176,9 @@ class AppSettings:
                 }
         # 校验颜色合法性
         if not QColor(s.bg_color).isValid():
-            s.bg_color = "#25262c"
+            s.bg_color = "#1e2a22"
         if not QColor(s.text_color).isValid():
-            s.text_color = "#e9e9ef"
+            s.text_color = "#e4f0e8"
         s.font_size = max(9, min(24, s.font_size))
         s.bg_opacity = max(MIN_BG_OPACITY, min(255, s.bg_opacity))
         if s.window_width is not None:

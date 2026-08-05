@@ -8,22 +8,33 @@ import os
 import sys
 import traceback
 from datetime import datetime
+from pathlib import Path
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from sticky_tasks import APP_NAME
-from sticky_tasks.app_paths import (
-    DATA_DIR, SETTINGS_FILE, TASKS_FILE, migrate_legacy_data, software_dir,
-)
+from sticky_tasks.app_paths import DATA_DIR, SETTINGS_FILE, TASKS_FILE, software_dir
 from sticky_tasks.app_settings import AppSettings
 from sticky_tasks.i18n import set_language, t
 from sticky_tasks.main_window import MainWindow
 from sticky_tasks.single_instance import SingleInstance
 from sticky_tasks.task_store import TaskStore
 
-ICON_FILE = software_dir() / "assets" / "icon.ico"
+
+def _icon_file() -> "Path":
+    """图标路径:源码态在软件目录 assets/;打包态 PyInstaller 会放进 _internal。"""
+    candidate = software_dir() / "assets" / "icon.ico"
+    if candidate.exists():
+        return candidate
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidate = Path(meipass) / "assets" / "icon.ico"
+    return candidate
+
+
+ICON_FILE = _icon_file()
 CRASH_LOG = DATA_DIR / "crash.log"
 MAX_CRASH_LOG_BYTES = 256 * 1024
 
@@ -66,16 +77,14 @@ def main():
                 None, APP_NAME, t("app.running", name=APP_NAME),
             )
             return
-    migration_errors = migrate_legacy_data()
     store = TaskStore(TASKS_FILE)
     window = MainWindow(store, settings_path=SETTINGS_FILE)
     window.show()
-    warnings = migration_errors + ([store.load_warning] if store.load_warning else [])
-    if warnings:
+    if store.load_warning:
         QTimer.singleShot(
             0,
-            lambda message="\n".join(warnings): QMessageBox.warning(
-                window, t("app.data_warning"), message,
+            lambda: QMessageBox.warning(
+                window, t("app.data_warning"), store.load_warning,
             ),
         )
     sys.exit(app.exec())

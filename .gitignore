@@ -15,3 +15,8 @@ venv/
 .idea/
 .DS_Store
 Thumbs.db
+
+# PyInstaller 打包产物
+build/
+dist/
+release/
