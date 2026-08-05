@@ -39,12 +39,18 @@ def test_compare_versions(a, b, expected):
 
 
 # ---- 检查更新流程 ----
-def test_check_update_without_repo_config_raises():
-    """仓库地址未填写时,应报网络未连接(发布前的占位行为)。"""
-    monkeypatch_attrs = (updater.REPO_OWNER, updater.REPO_REPO)
-    assert monkeypatch_attrs == ("", "")
+def test_check_update_without_repo_config_raises(monkeypatch):
+    """仓库地址未配置时,应报网络未连接。"""
+    monkeypatch.setattr(updater, "REPO_OWNER", "")
+    monkeypatch.setattr(updater, "REPO_REPO", "")
     with pytest.raises(UpdateError, match="网络未连接"):
         check_for_update("1.0.0")
+
+
+def test_repo_config_points_to_release_repo():
+    """发布版必须已配置真实仓库,否则用户无法检查更新。"""
+    assert updater.REPO_OWNER == "JinmyYang"
+    assert updater.REPO_REPO == "MyToDo"
 
 
 class _FakeResponse:

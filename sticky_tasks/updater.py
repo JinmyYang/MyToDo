@@ -2,9 +2,6 @@
 
 纯标准库实现(urllib),不引入额外依赖;只发一个只读 GET 请求,
 不上传任何用户数据。
-
-发布前 TODO:仓库建好后填写下方 REPO_OWNER / REPO_REPO,
-检查更新即可自动接通;未填写时点击会提示"网络未连接"。
 """
 
 from __future__ import annotations
@@ -13,9 +10,9 @@ import json
 import re
 import urllib.request
 
-# ---- 发布前填写(GitHub 用户名 / 仓库名)----
-REPO_OWNER = ""
-REPO_REPO = ""
+# ---- GitHub 仓库(检查更新的数据来源)----
+REPO_OWNER = "JinmyYang"
+REPO_REPO = "MyToDo"
 
 API_TIMEOUT = 8  # 秒
 
