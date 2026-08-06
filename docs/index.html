@@ -48,11 +48,11 @@
   .feature b { display: block; margin-bottom: 4px; }
   .feature span { color: var(--muted); font-size: 14px; }
 
-  /* ---- 截图 ---- */
-  .shots { display: grid; gap: 24px; }
-  figure { background: var(--panel); border-radius: 14px; padding: 18px; }
+  /* ---- 截图(两列小图) ---- */
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+  figure { background: var(--panel); border-radius: 14px; padding: 14px; margin: 0; }
   figure img { width: 100%; border-radius: 8px; display: block; }
-  figcaption { color: var(--muted); font-size: 14px; text-align: center; margin-top: 12px; }
+  figcaption { color: var(--muted); font-size: 13px; text-align: center; margin-top: 10px; }
 
   /* ---- 使用说明 / FAQ ---- */
   ol.steps { padding-left: 22px; }
@@ -100,16 +100,28 @@
     <h2>界面预览</h2>
     <div class="shots">
       <figure>
-        <img src="img/transparent.png" alt="半透明效果">
-        <figcaption>半透明窗口透出桌面壁纸，任务就在眼前，又不喧宾夺主</figcaption>
+        <img src="img/low-opacity.png" alt="低透明度外观">
+        <figcaption>低透明度下能看到壁纸，任务与桌面融为一体</figcaption>
       </figure>
       <figure>
-        <img src="img/main.png" alt="主界面">
-        <figcaption>主界面：JUST DO IT. —— 新建、完成、拖拽排序，一切从简</figcaption>
+        <img src="img/completed-panel.png" alt="已完成栏">
+        <figcaption>已完成栏可展开，随时恢复任务</figcaption>
+      </figure>
+      <figure>
+        <img src="img/drag-sort.png" alt="拖拽排序">
+        <figcaption>长按任务可拖动调整顺序</figcaption>
+      </figure>
+      <figure>
+        <img src="img/locked.png" alt="锁定模式">
+        <figcaption>锁定后界面很简约，移入鼠标点右上角锁头解锁</figcaption>
       </figure>
       <figure>
         <img src="img/settings.png" alt="设置界面">
-        <figcaption>设置：主题预设、颜色字体、透明度、语言与检查更新</figcaption>
+        <figcaption>设置界面，可自定义背景色、透明度、字体等外观</figcaption>
+      </figure>
+      <figure>
+        <img src="img/quit.png" alt="退出">
+        <figcaption>右键顶部栏可退出程序</figcaption>
       </figure>
     </div>
   </section>
@@ -117,10 +129,17 @@
   <section>
     <h2>安装使用</h2>
     <ol class="steps">
-      <li>点击上方「下载 Windows 版」，进入发布页下载 <code>MyToDo-v*-win64.zip</code>。</li>
-      <li>解压到任意目录（建议不要放在 C 盘系统保护目录，如 <code>Program Files</code>）。</li>
-      <li>双击 <code>MyToDo.exe</code> 即可使用，任务数据自动保存在同目录的 <code>.sticky_tasks</code> 文件夹。</li>
+      <li>点击上方「下载 Windows 版」，下载 <code>MyToDo-v*-win64.zip</code>。</li>
+      <li>解压到一个文件夹（建议不要放在 <code>Program Files</code> 等系统保护目录）。</li>
+      <li>双击 <code>MyToDo.exe</code> 即可运行，任务数据自动保存在同目录的 <code>.sticky_tasks</code> 文件夹。</li>
+      <li>想要桌面图标：右键 <code>MyToDo.exe</code> → 创建快捷方式，把快捷方式拖到桌面即可。</li>
     </ol>
+    <div class="shots" style="grid-template-columns: minmax(240px, 360px);">
+      <figure>
+        <img src="img/folder.png" alt="软件文件夹">
+        <figcaption>解压后的软件文件夹，数据都在 <code>.sticky_tasks</code> 里</figcaption>
+      </figure>
+    </div>
   </section>
 
   <section>
