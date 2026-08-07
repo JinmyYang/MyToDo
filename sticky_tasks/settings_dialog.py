@@ -4,16 +4,21 @@
 颜色使用系统选择器，字体直接在设置窗口的下拉框中选择。
 """
 
+import shutil
+import sys
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame,
     QColorDialog, QComboBox, QSlider, QSpinBox, QCompleter,
-    QAbstractSpinBox, QLineEdit, QMessageBox,
+    QAbstractSpinBox, QLineEdit, QMessageBox, QProgressDialog,
+    QApplication,
 )
 # 注:QCompleter 仅用其枚举常量配置 combo 内置补全器,不另建实例
-from PySide6.QtCore import Qt, Signal, QEvent, QUrl
+from PySide6.QtCore import Qt, Signal, QEvent, QUrl, QThread
 from PySide6.QtGui import QColor, QCursor, QFontDatabase, QDesktopServices
 
 from . import APP_NAME, APP_VERSION
+from . import app_paths
 from . import dialogs
 from . import updater
 from .app_settings import AppSettings, MIN_BG_OPACITY
@@ -115,6 +120,42 @@ class _NoWheelSlider(QSlider):
 
     def wheelEvent(self, event):
         event.ignore()
+
+
+class _DownloadWorker(QThread):
+    """后台线程下载新版本安装程序,进度/结果通过信号回传主线程。"""
+
+    progress = Signal(int, int)   # (done, total),total 可能为 0
+    finished_ok = Signal(str)     # 下载成功,携带安装程序路径
+    failed = Signal(str)          # 失败原因;取消时发 __cancelled__
+
+    def __init__(self, url, dest_path, parent=None):
+        super().__init__(parent)
+        self._url = url
+        self._dest_path = dest_path
+        self._cancelled = False
+        self.ok = False
+
+    def request_cancel(self):
+        self._cancelled = True
+
+    def run(self):
+        try:
+            updater.download_asset(
+                self._url,
+                self._dest_path,
+                progress_cb=lambda d, t: self.progress.emit(d, t),
+                cancel_check=lambda: self._cancelled,
+            )
+        except updater.UpdateCancelled:
+            self.failed.emit("__cancelled__")
+        except updater.UpdateError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:  # 兜底:不让线程静默死亡
+            self.failed.emit(str(exc))
+        else:
+            self.ok = True
+            self.finished_ok.emit(str(self._dest_path))
 
 
 class SettingsWindow(QWidget):
@@ -365,10 +406,98 @@ class SettingsWindow(QWidget):
         )
         if info["notes"]:
             box.setInformativeText(info["notes"][:500])
+        # 一键更新仅打包态且拿到附件直链时可用,否则只留前往下载
+        can_auto = getattr(sys, "frozen", False) and bool(info.get("asset_url"))
+        update_btn = None
+        if can_auto:
+            update_btn = box.addButton(
+                t("settings.update_now"), QMessageBox.AcceptRole,
+            )
+        open_btn = box.addButton(t("settings.open_download"), QMessageBox.ActionRole)
+        box.addButton(t("settings.close"), QMessageBox.RejectRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is update_btn:
+            self._run_update(info)
+        elif clicked is open_btn and info["url"]:
+            QDesktopServices.openUrl(QUrl(info["url"]))
+
+    # ---- 一键更新 ----
+    def _run_update(self, info):
+        """下载新版本安装程序并交给外部脚本静默安装。"""
+        temp_dir = updater.make_update_dir()
+        setup_path = temp_dir / f"MyToDo-Setup-v{info['version']}.exe"
+        worker = _DownloadWorker(info["asset_url"], setup_path, self)
+        base_label = t("settings.update_downloading", version=info["version"])
+        dlg = QProgressDialog(base_label, t("common.cancel"), 0, 100, self)
+        dlg.setWindowTitle(APP_NAME)
+        dlg.setWindowModality(Qt.WindowModal)
+        dlg.setMinimumDuration(0)
+        dlg.setAutoClose(False)
+        dlg.setAutoReset(False)
+
+        def _on_progress(done, total):
+            if total > 0:
+                dlg.setMaximum(100)
+                pct = int(done * 100 / total)
+                dlg.setValue(pct)
+                dlg.setLabelText(f"{base_label} {pct}%")
+            else:
+                dlg.setMaximum(0)  # 长度未知:不定量滚动
+                dlg.setLabelText(f"{base_label} {done // 1024} KB")
+
+        state = {"error": "", "cancelled": False}
+
+        def _on_ok(_path):
+            dlg.close()
+
+        def _on_fail(msg):
+            if isinstance(msg, str) and msg == "__cancelled__":
+                state["cancelled"] = True
+            else:
+                state["error"] = msg
+            dlg.close()
+
+        worker.progress.connect(_on_progress)
+        worker.finished_ok.connect(_on_ok)
+        worker.failed.connect(_on_fail)
+        dlg.canceled.connect(worker.request_cancel)
+        worker.start()
+        dlg.exec()
+        worker.wait()
+
+        if state["cancelled"]:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return
+        if state["error"] or not worker.ok:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            self._update_failed_fallback(info, state["error"])
+            return
+        try:
+            updater.prepare_and_launch_update(
+                setup_path, app_paths.software_dir(),
+            )
+        except updater.UpdateError as exc:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            self._update_failed_fallback(info, str(exc))
+            return
+        # 脚本已接管:退出后由它静默安装并重启程序
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
+
+    def _update_failed_fallback(self, info, reason):
+        """自动更新失败时提示原因,并引导前往下载页手动更新。"""
+        box = dialogs.message_box(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle(APP_NAME)
+        box.setText(t("settings.update_failed"))
+        if reason:
+            box.setInformativeText(str(reason))
         open_btn = box.addButton(t("settings.open_download"), QMessageBox.AcceptRole)
         box.addButton(t("settings.close"), QMessageBox.RejectRole)
         box.exec()
-        if box.clickedButton() is open_btn and info["url"]:
+        if box.clickedButton() is open_btn and info.get("url"):
             QDesktopServices.openUrl(QUrl(info["url"]))
 
     # ---- 工具 ----

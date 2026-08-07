@@ -4,7 +4,7 @@
 
 **🌐 官网**：https://jinmyyang.github.io/MyToDo/
 
-**⬇️ [下载 Windows 版](https://github.com/JinmyYang/MyToDo/releases/latest)**（进入发布页后下载 `MyToDo-v*-win64.zip`，免安装，解压即用）
+**⬇️ [下载 Windows 版](https://github.com/JinmyYang/MyToDo/releases/latest)**（进入发布页后下载 `MyToDo-Setup-v*.exe` 安装包，按向导安装）
 
 ## 功能
 
@@ -32,16 +32,14 @@ python -m pip install -r requirements.txt
 python main.py
 ```
 
-首次运行会在软件所在目录的 `.sticky_tasks/tasks.json` 创建数据文件。
+首次运行会在 `%APPDATA%\MyToDo\tasks.json` 创建数据文件（旧便携版 `.sticky_tasks` 里的数据会自动迁入）。
 
 ## 使用
 
-1. [下载 Windows 版](https://github.com/JinmyYang/MyToDo/releases/latest) 的 zip 压缩包
-2. 解压到一个文件夹（建议不要放在 `Program Files` 等系统保护目录）
-3. 双击 `MyToDo.exe` 即可运行，任务数据自动保存在同目录的 `.sticky_tasks` 文件夹
-4. 想要桌面图标：右键 `MyToDo.exe` → 创建快捷方式，把快捷方式拖到桌面即可
-
-<img src="docs/img/folder.png" width="320">
+1. [下载 Windows 版](https://github.com/JinmyYang/MyToDo/releases/latest) 的 `MyToDo-Setup-v*.exe` 安装包
+2. 双击安装包按向导安装（仅当前用户，不需要管理员权限）
+3. 从开始菜单或桌面快捷方式启动，任务数据保存在 `%APPDATA%\MyToDo`
+4. 软件内「设置 → 检查更新」可一键更新；卸载走「设置 → 应用」，卸载时可选是否删除数据
 
 ## 测试
 
@@ -61,7 +59,8 @@ QT_QPA_PLATFORM=offscreen python -m pytest tests/test_gui_smoke.py -v
 ## 技术栈
 
 - **Python 3.13** + **PySide6 6.11**(Qt for Python)
-- 数据持久化:JSON(`软件目录/.sticky_tasks/tasks.json`)
+- 数据持久化:JSON(`%APPDATA%\MyToDo\tasks.json`)
+- 安装器:Inno Setup 6(`mytodo.iss`)
 - 测试:pytest
 
 ## 目录结构
@@ -72,6 +71,9 @@ project0711/
 ├── requirements.txt
 ├── assets/
 │   └── icon.ico             # 应用图标
+├── installer/
+│   └── ChineseSimplified.isl # 安装向导简体中文语言包
+├── mytodo.iss               # Inno Setup 安装脚本
 ├── sticky_tasks/
 │   ├── app_paths.py         # 数据/日志等路径解析
 │   ├── task_store.py        # 数据层(Task / TaskStore)

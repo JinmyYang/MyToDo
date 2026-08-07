@@ -86,6 +86,9 @@ _TRANSLATIONS = {
         "settings.up_to_date": "当前已是最新版本 (v{version})。",
         "settings.new_version": "发现新版本 v{latest}（当前 v{current}）",
         "settings.open_download": "前往下载",
+        "settings.update_now": "立即更新",
+        "settings.update_downloading": "正在下载新版本 v{version}…",
+        "settings.update_failed": "自动更新失败，可前往下载页手动更新。",
         "settings.close": "关闭",
     },
     LANG_EN: {
@@ -134,6 +137,9 @@ _TRANSLATIONS = {
         "settings.up_to_date": "You're up to date (v{version}).",
         "settings.new_version": "New version v{latest} available (current v{current})",
         "settings.open_download": "Download",
+        "settings.update_now": "Update now",
+        "settings.update_downloading": "Downloading v{version}…",
+        "settings.update_failed": "Auto-update failed. You can download it manually.",
         "settings.close": "Close",
     },
 }

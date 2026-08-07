@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MyToDo —— 桌面任务便签</title>
-<meta name="description" content="MyToDo：半透明无边框的 Windows 桌面任务便签，免安装、无登录、数据全在本地。">
+<meta name="description" content="MyToDo：半透明无边框的 Windows 桌面任务便签，一键安装、无登录、数据全在本地。">
 <link rel="icon" href="img/icon.png">
 <style>
   :root {
@@ -79,7 +79,7 @@
       <a class="btn btn-primary" id="downloadBtn" href="https://github.com/JinmyYang/MyToDo/releases/latest">下载 Windows 版</a>
       <a class="btn btn-ghost" href="https://github.com/JinmyYang/MyToDo">GitHub 仓库</a>
     </div>
-    <p class="version">Windows 10 / 11 · 免安装 · 无需注册登录 · 完全本地运行</p>
+    <p class="version">Windows 10 / 11 · 一键安装 · 无需注册登录 · 完全本地运行</p>
   </header>
 
   <section>
@@ -115,30 +115,25 @@
   <section>
     <h2>安装使用</h2>
     <ol class="steps">
-      <li>点击上方「下载 Windows 版」，下载 <code>MyToDo-v*-win64.zip</code>。</li>
-      <li>解压到一个文件夹（建议不要放在 <code>Program Files</code> 等系统保护目录）。</li>
-      <li>双击 <code>MyToDo.exe</code> 即可运行。因软件没有购买代码签名证书，首次运行若提示“Windows 已保护你的电脑”，可点击「更多信息」→「仍要运行」，之后启动不会再提示。源码全部公开在 GitHub 仓库，可自行审查或从源码运行。</li>
-      <li>首次运行会在同目录创建 <code>.sticky_tasks</code> 文件夹，数据存在这里。</li>
-      <li>右键 <code>MyToDo.exe</code> → 更多选项 → 创建快捷方式，把快捷方式拖到桌面即可。</li>
+      <li>点击上方「下载 Windows 版」，下载 <code>MyToDo-Setup-v*.exe</code> 安装包。</li>
+      <li>双击安装包，按向导一步步安装（仅当前用户安装，不需要管理员权限）。因软件没有购买代码签名证书，首次运行若提示“Windows 已保护你的电脑”，可点击「更多信息」→「仍要运行」。源码全部公开在 GitHub 仓库，可自行审查或从源码运行。</li>
+      <li>安装完成后可从开始菜单或桌面快捷方式启动。</li>
+      <li>任务数据保存在 <code>%APPDATA%\MyToDo</code>，重装、更新都不会丢失。</li>
+      <li>软件内「设置 → 检查更新」可一键更新；卸载走「设置 → 应用」或开始菜单里的卸载入口，卸载时可选是否删除数据。</li>
+      <li>旧版免安装 zip 用户：直接装新版即可；若把新版安装到旧的解压文件夹，原有任务数据会自动迁入。</li>
     </ol>
-    <div class="shots" style="grid-template-columns: minmax(240px, 360px);">
-      <figure>
-        <img src="img/folder.png" alt="软件文件夹">
-        <figcaption>软件文件夹</figcaption>
-      </figure>
-    </div>
   </section>
 
   <section>
     <h2>功能亮点</h2>
     <div class="features">
       <div class="feature"><b>🪟 半透明悬浮桌面</b><span>无边框窗口透出壁纸，任务与桌面融为一体，透明度可自由调节。</span></div>
-      <div class="feature"><b>📦 解压即用</b><span>无需安装、无需 Python 环境，下载解压后双击运行；数据存在软件目录，拷走整个文件夹就是备份。</span></div>
+      <div class="feature"><b>📦 一键安装</b><span>标准安装向导，无需 Python 环境；数据与程序分离，更新、重装不丢数据。</span></div>
       <div class="feature"><b>🎨 主题预设</b><span>深空、暖夜、森林、海洋、薰衣草、素白六套预设，也可自定义颜色、字体与透明度。</span></div>
       <div class="feature"><b>🔒 锁定模式</b><span>一键锁定窗口，防止误拖拽误编辑；Ctrl+L 快速切换。</span></div>
       <div class="feature"><b>🕘 历史任务</b><span>完成与删除的任务进入历史记录，可随时恢复或彻底清除。</span></div>
       <div class="feature"><b>🌏 中英双语</b><span>设置中一键切换中文 / English，重启即生效。</span></div>
-      <div class="feature"><b>🔄 检查更新</b><span>设置内一键检查新版本，对接 GitHub Releases。</span></div>
+      <div class="feature"><b>🔄 一键更新</b><span>设置内检查新版本，发现新版自动下载安装，对接 GitHub Releases。</span></div>
       <div class="feature"><b>🛡️ 隐私优先</b><span>无账号、无云端、无遥测，所有数据只保存在你自己的电脑上。</span></div>
     </div>
   </section>
@@ -150,11 +145,11 @@
 </div>
 
 <script>
-  // 下载按钮自动指向最新 Release 的 zip 附件
+  // 下载按钮自动指向最新 Release 的安装包附件
   fetch("https://api.github.com/repos/JinmyYang/MyToDo/releases/latest")
     .then(function (r) { return r.json(); })
     .then(function (data) {
-      var asset = (data.assets || []).find(function (a) { return a.name.endsWith(".zip"); });
+      var asset = (data.assets || []).find(function (a) { return a.name.indexOf("-Setup-") !== -1 && a.name.endsWith(".exe"); });
       if (asset) document.getElementById("downloadBtn").href = asset.browser_download_url;
     })
     .catch(function () { /* API 不通时保留发布页链接 */ });

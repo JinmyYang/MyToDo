@@ -4,8 +4,8 @@
 
 VSVersionInfo(
     ffi=FixedFileInfo(
-        filevers=(1, 0, 1, 0),
-        prodvers=(1, 0, 1, 0),
+        filevers=(1, 1, 0, 0),
+        prodvers=(1, 1, 0, 0),
         mask=0x3F,
         flags=0x0,
         OS=0x40004,
@@ -21,7 +21,7 @@ VSVersionInfo(
                     [
                         StringStruct("CompanyName", "MyToDo"),
                         StringStruct("FileDescription", "MyToDo 桌面任务便签"),
-                        StringStruct("FileVersion", "1.0.1.0"),
+                        StringStruct("FileVersion", "1.1.0.0"),
                         StringStruct("InternalName", "MyToDo"),
                         StringStruct(
                             "LegalCopyright",
@@ -29,7 +29,7 @@ VSVersionInfo(
                         ),
                         StringStruct("OriginalFilename", "MyToDo.exe"),
                         StringStruct("ProductName", "MyToDo"),
-                        StringStruct("ProductVersion", "1.0.1.0"),
+                        StringStruct("ProductVersion", "1.1.0.0"),
                     ],
                 )
             ]
