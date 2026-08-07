@@ -145,14 +145,19 @@
 </div>
 
 <script>
-  // 下载按钮自动指向最新 Release 的安装包附件
-  fetch("https://api.github.com/repos/JinmyYang/MyToDo/releases/latest")
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-      var asset = (data.assets || []).find(function (a) { return a.name.indexOf("-Setup-") !== -1 && a.name.endsWith(".exe"); });
-      if (asset) document.getElementById("downloadBtn").href = asset.browser_download_url;
+  // 下载按钮自动指向最新 Release 的安装包。
+  // 走 github.com 重定向而非 api.github.com:后者匿名限流 60 次/小时/出口 IP,
+  // 代理共享 IP 下极易耗尽,重定向终点 URL 自带最新版本号。
+  fetch("https://github.com/JinmyYang/MyToDo/releases/latest", { redirect: "follow" })
+    .then(function (r) {
+      var m = r.url.match(/\/releases\/tag\/v?([^/]+)/);
+      if (!m) return;
+      var tag = "v" + m[1].replace(/^v/, "");
+      document.getElementById("downloadBtn").href =
+        "https://github.com/JinmyYang/MyToDo/releases/download/" + tag +
+        "/MyToDo-Setup-" + tag + ".exe";
     })
-    .catch(function () { /* API 不通时保留发布页链接 */ });
+    .catch(function () { /* 网络不通时保留发布页链接 */ });
 </script>
 </body>
 </html>

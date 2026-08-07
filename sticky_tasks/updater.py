@@ -16,6 +16,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -83,12 +84,59 @@ def _pick_asset_url(assets: list) -> str:
 def check_for_update(current_version: str) -> dict | None:
     """查询最新 Release,有新版本返回信息字典,已是最新返回 None。
 
+    主通道走 github.com 网页重定向(不受 API 匿名限流),失败再退回
+    GitHub Releases API(可附带更新说明)。
     返回字段:version(新版本号)、notes(更新说明)、url(Release 页面)、
     asset_url(安装程序直链,可能为空串)。
     任何失败(含仓库未配置)统一抛 UpdateError,由 UI 层显示友好提示。
     """
     if not REPO_OWNER or not REPO_REPO:
         raise UpdateError("网络未连接，请稍后再试")
+    try:
+        return _check_via_redirect(current_version)
+    except UpdateError:
+        return _check_via_api(current_version)
+
+
+def _parse_latest_tag(final_url: str) -> str:
+    """从 /releases/tag/vX.Y.Z 形式的重定向终点提取版本号。
+
+    仓库没有任何 Release 时 GitHub 会重定向到 /releases,返回空串。
+    """
+    match = re.search(r"/releases/tag/v?([^/]+)/?$", final_url)
+    return match.group(1).lstrip("vV") if match else ""
+
+
+def _check_via_redirect(current_version: str) -> dict | None:
+    """用 github.com 网页重定向查最新版本:不消耗 API 匿名配额。
+
+    安装程序链接按固定命名约定拼出(与 mytodo.iss 产物名一致)。
+    """
+    url = f"https://github.com/{REPO_OWNER}/{REPO_REPO}/releases/latest"
+    request = urllib.request.Request(
+        url, headers={"User-Agent": "MyToDo-UpdateCheck"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=API_TIMEOUT) as resp:
+            latest = _parse_latest_tag(resp.geturl())
+    except Exception as exc:
+        raise UpdateError("网络未连接，请检查网络后重试") from exc
+    if not latest or compare_versions(latest, current_version) <= 0:
+        return None
+    tag = f"v{latest}"
+    return {
+        "version": latest,
+        "notes": "",
+        "url": f"https://github.com/{REPO_OWNER}/{REPO_REPO}/releases/tag/{tag}",
+        "asset_url": (
+            f"https://github.com/{REPO_OWNER}/{REPO_REPO}/releases"
+            f"/download/{tag}/MyToDo-Setup-{tag}.exe"
+        ),
+    }
+
+
+def _check_via_api(current_version: str) -> dict | None:
+    """退回方案:GitHub Releases API(匿名限流 60 次/小时/出口 IP)。"""
     url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_REPO}/releases/latest"
     request = urllib.request.Request(
         url,
@@ -100,6 +148,10 @@ def check_for_update(current_version: str) -> dict | None:
     try:
         with urllib.request.urlopen(request, timeout=API_TIMEOUT) as resp:
             data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code in (403, 429):
+            raise UpdateError("检查更新请求过于频繁，请稍后再试") from exc
+        raise UpdateError("网络未连接，请检查网络后重试") from exc
     except Exception as exc:
         raise UpdateError("网络未连接，请检查网络后重试") from exc
     tag = data.get("tag_name") or ""

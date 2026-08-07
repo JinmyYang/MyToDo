@@ -1,6 +1,7 @@
-"""检查更新(updater)测试:版本比较、GitHub API 流程与一键更新。"""
+"""检查更新(updater)测试:版本比较、检查通道(重定向/API)与一键更新。"""
 
 import json
+import urllib.error
 
 import pytest
 
@@ -60,6 +61,29 @@ class _FakeResponse:
 
     def read(self):
         return self._body
+
+    def geturl(self):
+        # 让重定向主通道失败,使测试走 API 兜底路径
+        raise OSError("redirect unavailable")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _FakeRedirectResponse:
+    """模拟 /releases/latest 的重定向响应,只关心终点 URL。"""
+
+    def __init__(self, final_url):
+        self._final_url = final_url
+
+    def read(self):
+        return b""
+
+    def geturl(self):
+        return self._final_url
 
     def __enter__(self):
         return self
@@ -146,6 +170,75 @@ def test_check_update_network_error_raises(monkeypatch, configured_repo):
 
     monkeypatch.setattr(updater.urllib.request, "urlopen", _raise)
     with pytest.raises(UpdateError, match="网络未连接"):
+        check_for_update("1.0.0")
+
+
+# ---- 检查通道:重定向主通道(不受 API 限流) ----
+def test_check_update_via_redirect_new_release(monkeypatch, configured_repo):
+    monkeypatch.setattr(
+        updater.urllib.request, "urlopen",
+        lambda req, timeout=None: _FakeRedirectResponse(
+            "https://github.com/someone/mytodo/releases/tag/v1.2.0",
+        ),
+    )
+    info = check_for_update("1.0.0")
+    assert info["version"] == "1.2.0"
+    assert info["url"].endswith("/tag/v1.2.0")
+    # 安装程序链接按固定命名约定拼出
+    assert info["asset_url"].endswith(
+        "/download/v1.2.0/MyToDo-Setup-v1.2.0.exe",
+    )
+
+
+def test_check_update_via_redirect_up_to_date(monkeypatch, configured_repo):
+    monkeypatch.setattr(
+        updater.urllib.request, "urlopen",
+        lambda req, timeout=None: _FakeRedirectResponse(
+            "https://github.com/someone/mytodo/releases/tag/v1.0.0",
+        ),
+    )
+    assert check_for_update("1.0.0") is None
+
+
+def test_check_update_falls_back_to_api(monkeypatch, configured_repo):
+    """重定向通道失败时退回 API,仍能拿到版本信息与更新说明。"""
+    payload = {
+        "tag_name": "v1.2.0",
+        "body": "修复若干问题",
+        "html_url": "https://example.com/releases/v1.2.0",
+        "assets": [],
+    }
+    calls = []
+
+    def _fake_urlopen(req, timeout=None):
+        calls.append(req.full_url)
+        if "api.github.com" not in req.full_url:
+            raise OSError("redirect blocked")
+        return _FakeResponse(payload)
+
+    monkeypatch.setattr(updater.urllib.request, "urlopen", _fake_urlopen)
+    info = check_for_update("1.0.0")
+    assert info["version"] == "1.2.0"
+    assert info["notes"] == "修复若干问题"
+    assert len(calls) == 2  # 先重定向后 API
+
+
+def test_check_update_api_rate_limit_friendly_message(
+    monkeypatch, configured_repo,
+):
+    """API 限流(403)时提示请求频繁,不再误报网络未连接。"""
+    monkeypatch.setattr(
+        updater, "_check_via_redirect",
+        lambda current: (_ for _ in ()).throw(UpdateError("不通")),
+    )
+
+    def _rate_limited(req, timeout=None):
+        raise urllib.error.HTTPError(
+            req.full_url, 403, "rate limit exceeded", {}, None,
+        )
+
+    monkeypatch.setattr(updater.urllib.request, "urlopen", _rate_limited)
+    with pytest.raises(UpdateError, match="过于频繁"):
         check_for_update("1.0.0")
 
 
