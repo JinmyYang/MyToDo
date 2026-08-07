@@ -14,6 +14,7 @@ from PySide6.QtCore import Qt, Signal, QEvent, QUrl
 from PySide6.QtGui import QColor, QCursor, QFontDatabase, QDesktopServices
 
 from . import APP_NAME, APP_VERSION
+from . import dialogs
 from . import updater
 from .app_settings import AppSettings, MIN_BG_OPACITY
 from .i18n import LANG_EN, LANG_ZH, set_language, t
@@ -315,7 +316,7 @@ class SettingsWindow(QWidget):
         lang_name = "English" if lang == LANG_EN else "中文"
 
         # 第一段:用旧语言确认,用户看得懂才能做决定
-        box = QMessageBox(self)
+        box = dialogs.message_box(self)
         box.setWindowTitle(APP_NAME)
         box.setText(t("settings.lang_confirm", lang=lang_name))
         confirm_btn = box.addButton(t("common.confirm"), QMessageBox.AcceptRole)
@@ -333,7 +334,7 @@ class SettingsWindow(QWidget):
         self.changed.emit()
 
         # 第二段:用新语言提示,顺带预览新语言效果
-        box2 = QMessageBox(self)
+        box2 = dialogs.message_box(self)
         box2.setWindowTitle(APP_NAME)
         box2.setText(t("settings.lang_restart"))
         restart_btn = box2.addButton(t("common.restart_now"), QMessageBox.AcceptRole)
@@ -347,14 +348,14 @@ class SettingsWindow(QWidget):
         try:
             info = updater.check_for_update(APP_VERSION)
         except updater.UpdateError as exc:
-            QMessageBox.warning(self, APP_NAME, str(exc))
+            dialogs.warning(self, APP_NAME, str(exc))
             return
         if info is None:
-            QMessageBox.information(
+            dialogs.information(
                 self, APP_NAME, t("settings.up_to_date", version=APP_VERSION),
             )
             return
-        box = QMessageBox(self)
+        box = dialogs.message_box(self)
         box.setWindowTitle(APP_NAME)
         box.setText(
             t(

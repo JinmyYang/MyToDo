@@ -9,6 +9,8 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QMessageBox, QAbstractItemView,
 )
 
+from . import dialogs
+
 
 HISTORY_QSS = """
 HistoryWindow { background: #1e1f24; }
@@ -165,12 +167,10 @@ class HistoryWindow(QWidget):
         if not ids:
             return
         if confirm:
-            answer = QMessageBox.question(
+            answer = dialogs.question(
                 self,
                 "永久删除",
                 f"确定永久删除选中的 {len(ids)} 个任务吗？此操作无法恢复。",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
             )
             if answer != QMessageBox.Yes:
                 return

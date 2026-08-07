@@ -12,11 +12,12 @@ from pathlib import Path
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication
 
 from sticky_tasks import APP_NAME
 from sticky_tasks.app_paths import DATA_DIR, SETTINGS_FILE, TASKS_FILE, software_dir
 from sticky_tasks.app_settings import AppSettings
+from sticky_tasks import dialogs
 from sticky_tasks.i18n import set_language, t
 from sticky_tasks.main_window import MainWindow
 from sticky_tasks.single_instance import SingleInstance
@@ -52,7 +53,7 @@ def _handle_exception(exc_type, exc_value, exc_tb):
             f.write("".join(traceback.format_exception(exc_type, exc_value, exc_tb)))
     except OSError:
         pass
-    QMessageBox.critical(
+    dialogs.critical(
         None, APP_NAME, t("app.crash"),
     )
     sys.__excepthook__(exc_type, exc_value, exc_tb)
@@ -73,7 +74,7 @@ def main():
     if not os.environ.get("STICKY_SKIP_SINGLE_INSTANCE"):
         guard = SingleInstance(DATA_DIR)
         if not guard.try_acquire(5000 if restarting else 0):
-            QMessageBox.information(
+            dialogs.information(
                 None, APP_NAME, t("app.running", name=APP_NAME),
             )
             return
@@ -83,7 +84,7 @@ def main():
     if store.load_warning:
         QTimer.singleShot(
             0,
-            lambda: QMessageBox.warning(
+            lambda: dialogs.warning(
                 window, t("app.data_warning"), store.load_warning,
             ),
         )
