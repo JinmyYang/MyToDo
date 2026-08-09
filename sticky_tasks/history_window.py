@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import dialogs
+from .task_item import TEXT_MASK
 
 
 HISTORY_QSS = """
@@ -59,6 +60,7 @@ class HistoryWindow(QWidget):
         self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint)
         self.setStyleSheet(HISTORY_QSS)
         self.resize(620, 440)
+        self._text_hidden = False  # 隐私模式:任务文本显示为掩码
         self._build_ui()
         self.refresh()
 
@@ -113,8 +115,11 @@ class HistoryWindow(QWidget):
         for task in tasks:
             status = "已删除" if task.deleted else "已完成"
             stamp = task.deleted_at or task.completed_at or task.created_at
+            text = task.text or "(空任务)"
+            if self._text_hidden and task.text:
+                text = TEXT_MASK
             item = QTreeWidgetItem([
-                task.text or "(空任务)",
+                text,
                 status,
                 self._format_time(stamp),
             ])
@@ -125,6 +130,12 @@ class HistoryWindow(QWidget):
         self.tree.blockSignals(False)
         self.count_label.setText(f"共 {len(tasks)} 项")
         self._update_actions()
+
+    def set_text_hidden(self, hidden):
+        """隐私模式与主窗口同步:重新填充列表。"""
+        if self._text_hidden != hidden:
+            self._text_hidden = hidden
+            self.refresh()
 
     def _checked_ids(self):
         return [

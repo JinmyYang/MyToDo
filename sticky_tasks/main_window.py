@@ -1,7 +1,23 @@
 """主窗口:半透明、无边框、普通层级的桌面便签。"""
 
 import math
+import sys
 from pathlib import Path
+
+if sys.platform == "win32":
+    import ctypes
+    _user32 = ctypes.WinDLL("user32")
+    # 必须声明 argtypes:HWND_TOPMOST(-1)/HWND_NOTOPMOST(-2) 是 64 位
+    # 指针宽度的哨兵值,不声明时 ctypes 按 32 位 int 传递,高字节
+    # 为垃圾值,调用会静默失败(置顶不生效/取消不掉)。
+    _user32.SetWindowPos.restype = ctypes.c_int
+    _user32.SetWindowPos.argtypes = [
+        ctypes.c_void_p, ctypes.c_void_p,
+        ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+        ctypes.c_uint,
+    ]
+else:
+    _user32 = None
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QScrollArea, QFrame,
@@ -219,6 +235,122 @@ class LockButton(QWidget):
         if event.button() == Qt.LeftButton:
             self.toggled.emit(not self._locked)
 
+class PinButton(QWidget):
+    """图钉按钮:置顶/取消置顶。置顶态竖立并高亮,未置顶倾斜置灰。"""
+    toggled = Signal(bool)
+
+    def __init__(self, pinned=False, parent=None):
+        super().__init__(parent)
+        self._pinned = pinned
+        self._color = QColor("#8e9099")
+        self._accent = QColor("#5ea0ff")
+        self._sync_tooltip()
+
+    def set_theme(self, theme: Theme):
+        self._color = theme.icon_color
+        self._accent = theme.accent_color
+        self.update()
+
+    def set_pinned(self, pinned):
+        self._pinned = pinned
+        self._sync_tooltip()
+        self.update()
+
+    def _sync_tooltip(self):
+        self.setToolTip(
+            t("main.pin_tooltip_on") if self._pinned else t("main.pin_tooltip_off"),
+        )
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        color = self._accent if self._pinned else self._color
+        pen = QPen(color, 1.7)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        p.save()
+        p.translate(14.0, 14.0)
+        if not self._pinned:
+            p.rotate(45.0)  # 未置顶时图钉倾斜,表示"未钉住"
+        # 图钉头:上方小倒三角 + 下方大正三角,两角在交接处大幅重叠。
+        # 沿融合后的外轮廓一笔画出,重叠区不显示内部轮廓:
+        # (±1.47,-2.1) 是两个三角形侧边的交点,小三角尖角深伸至大三角近底部。
+        head = QPainterPath()
+        head.moveTo(-3.2, -7.5)
+        head.lineTo(3.2, -7.5)
+        head.lineTo(1.47, -2.1)    # 小三角右缘下行至重叠交点
+        head.lineTo(5.2, 4.0)      # 接大三角右缘下行至底角
+        head.lineTo(-5.2, 4.0)
+        head.lineTo(-1.47, -2.1)   # 大三角左缘上行至重叠交点
+        head.closeSubpath()        # 闭合回起点(小三角左缘)
+        p.drawPath(head)
+        p.drawLine(QPointF(0.0, 4.0), QPointF(0.0, 8.5))
+        p.restore()
+        p.end()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.toggled.emit(not self._pinned)
+
+
+class EyeButton(QWidget):
+    """眼睛按钮:一键隐藏/显示任务文本。隐藏态加斜线并高亮。"""
+    toggled = Signal(bool)
+
+    def __init__(self, hidden=False, parent=None):
+        super().__init__(parent)
+        self._hidden = hidden
+        self._color = QColor("#8e9099")
+        self._accent = QColor("#5ea0ff")
+        self._sync_tooltip()
+
+    def set_theme(self, theme: Theme):
+        self._color = theme.icon_color
+        self._accent = theme.accent_color
+        self.update()
+
+    def set_hidden(self, hidden):
+        self._hidden = hidden
+        self._sync_tooltip()
+        self.update()
+
+    def _sync_tooltip(self):
+        self.setToolTip(
+            t("main.eye_tooltip_on") if self._hidden else t("main.eye_tooltip_off"),
+        )
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        color = self._accent if self._hidden else self._color
+        pen = QPen(color, 1.7)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        # 眼眶:上下两段弧线围成眼形
+        eye = QPainterPath()
+        eye.moveTo(6.2, 14.0)
+        eye.quadTo(14.0, 6.8, 21.8, 14.0)
+        eye.quadTo(14.0, 21.2, 6.2, 14.0)
+        p.drawPath(eye)
+        # 眼珠
+        p.setPen(Qt.NoPen)
+        p.setBrush(color)
+        p.drawEllipse(QPointF(14.0, 14.0), 2.3, 2.3)
+        p.setBrush(Qt.NoBrush)
+        p.setPen(pen)
+        if self._hidden:
+            # 斜线划过眼睛表示"已隐藏"
+            p.drawLine(QPointF(7.0, 20.5), QPointF(21.0, 7.5))
+        p.end()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.toggled.emit(not self._hidden)
+
 class HeaderBar(QFrame):
     """上方栏:标题、锁头、空白拖动区域及右键菜单。"""
 
@@ -237,6 +369,19 @@ class HeaderBar(QFrame):
         hl.addWidget(self.title_label)
         hl.addStretch()
 
+        # 图钉:置顶/取消置顶;眼睛:隐藏/显示任务文本;都在锁头左侧
+        self.pin_btn = PinButton(parent=self)
+        self.pin_btn.setFixedSize(28, 28)
+        self.pin_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self.pin_btn.toggled.connect(lambda p: window.set_always_on_top(p))
+        hl.addWidget(self.pin_btn)
+
+        self.eye_btn = EyeButton(parent=self)
+        self.eye_btn.setFixedSize(28, 28)
+        self.eye_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self.eye_btn.toggled.connect(lambda h: window.set_text_hidden(h))
+        hl.addWidget(self.eye_btn)
+
         # 锁头:锁定/解锁窗口(提示文案随状态切换)
         self.lock_btn = LockButton(parent=self)
         self.lock_btn.setFixedSize(28, 28)
@@ -245,6 +390,9 @@ class HeaderBar(QFrame):
         hl.addWidget(self.lock_btn)
 
     def contextMenuEvent(self, event):
+        # 锁定态下右键菜单不响应(解锁走锁头点击)
+        if self._window._locked:
+            return
         self._window.show_header_menu(event.globalPos())
 
 
@@ -258,6 +406,8 @@ class MainWindow(QWidget):
         self._drag_pos = None
         self._active_items = {}  # task_id -> TaskItem
         self._locked = False
+        self._always_on_top = self.settings.always_on_top  # 置顶态,showEvent 里原生应用
+        self._text_hidden = False  # 隐私模式(不持久化,启动默认显示)
         self._completed_expanded = False
         self._collapsed_h = None  # 已完成面板折叠时窗口高度
         self._expanded_panel_h = 0
@@ -284,7 +434,8 @@ class MainWindow(QWidget):
 
         self.setWindowTitle(APP_NAME)
         self.setFont(QFont(self.theme.font_family, 10))
-        # 普通窗口层级(不再置顶),仅无边框
+        # 仅无边框;置顶不用 Qt 标志而用原生 API(showEvent),
+        # 避免 Qt 标志残留与原生层级不一致导致置顶无法取消
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setMinimumSize(MIN_W, MIN_H)
@@ -307,6 +458,8 @@ class MainWindow(QWidget):
 
         # ---- 标题栏(加号 + 锁头横向排列;空白处可拖动窗口,右键退出/解锁)----
         self.header = HeaderBar(self)
+        # 图钉按钮初始状态跟随持久化设置
+        self.header.pin_btn.set_pinned(self.settings.always_on_top)
         v.addWidget(self.header)
 
         # ---- 顶部分隔线 ----
@@ -534,6 +687,7 @@ class MainWindow(QWidget):
     def _add_item_widget(self, task, focus=True, animate=True, position=None):
         item = TaskItem(task)
         item.set_theme(self.theme)
+        item.set_text_hidden(self._text_hidden)
         item.completed.connect(self.on_complete)
         item.text_changed.connect(self.on_text_changed)
         item.delete_requested.connect(self.on_delete)
@@ -894,6 +1048,7 @@ class MainWindow(QWidget):
             win.changed.connect(self._reload_task_views)
             self._history_win = win
         win.refresh()
+        win.set_text_hidden(self._text_hidden)
         win.show()
         win.raise_()
         win.activateWindow()
@@ -955,6 +1110,9 @@ class MainWindow(QWidget):
         self.setFont(QFont(t.font_family, 10))
         # 锁头
         self.header.lock_btn.set_theme(t)
+        # 图钉与眼睛
+        self.header.pin_btn.set_theme(t)
+        self.header.eye_btn.set_theme(t)
         # 齿轮图标
         self.settings_btn.setIcon(QIcon(self._gear_pixmap()))
         # chevron
@@ -975,7 +1133,8 @@ class MainWindow(QWidget):
         self._locked = locked
         # 锁头位置固定在右上角;锁上时先显示,鼠标移出窗口再隐藏(见 leaveEvent)
         self.header.lock_btn.set_locked(locked)
-        self.header.lock_btn.setVisible(True)
+        for btn in self._header_icon_btns():
+            btn.setVisible(True)
         self._inline_add_btn.setVisible(not locked)
         self.footer_bar.setVisible(not locked)
         self.scroll.setVerticalScrollBarPolicy(
@@ -992,12 +1151,75 @@ class MainWindow(QWidget):
     def toggle_locked(self):
         self.set_locked(not self._locked)
 
+    def _header_icon_btns(self):
+        """顶部栏右侧图标按钮组(锁定态下随鼠标进出统一显隐)。"""
+        return (self.header.pin_btn, self.header.eye_btn, self.header.lock_btn)
+
+    # ---- 图钉置顶 ----
+    def _apply_topmost_native(self, pinned):
+        """Windows 原生改 z-order(不重建窗口、不闪烁)。不可用时返回 False。"""
+        if _user32 is None or not self.isVisible():
+            return False
+        HWND_TOPMOST, HWND_NOTOPMOST = -1, -2
+        SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x1, 0x2, 0x10
+        return bool(_user32.SetWindowPos(
+            int(self.winId()),
+            HWND_TOPMOST if pinned else HWND_NOTOPMOST,
+            0, 0, 0, 0,
+            SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE,
+        ))
+
+    def showEvent(self, event):
+        """每次窗口(重)显示后按当前置顶设置校正层级。
+
+        覆盖最小化还原、隐藏重显等场景,避免状态丢失或残留。
+        """
+        super().showEvent(event)
+        self._apply_topmost_native(self._always_on_top)
+
+    def set_always_on_top(self, pinned):
+        """切换窗口置顶;状态写入 settings 跨重启保持。
+
+        Windows 上直接走原生 SetWindowPos 改 z-order,避免
+        setWindowFlags 重建窗口导致的整界面闪烁;非 Windows 退回重建方式。
+        """
+        self.settings.always_on_top = pinned
+        self._always_on_top = pinned
+        self.header.pin_btn.set_pinned(pinned)
+        if not self._apply_topmost_native(pinned):
+            # 非 Windows(或窗口尚未显示):重建窗口标志兼容
+            flags = Qt.FramelessWindowHint
+            if pinned:
+                flags |= Qt.WindowStaysOnTopHint
+            was_visible = self.isVisible()
+            geo = self.geometry()
+            self.setWindowFlags(flags)
+            self.setGeometry(geo)
+            if was_visible:
+                self.show()
+        self._settings_dirty = True
+        self._settings_save_timer.start()
+
+    # ---- 隐藏任务文本(隐私模式) ----
+    def set_text_hidden(self, hidden):
+        """全视图同步掩码:主列表、已完成面板、历史窗口。"""
+        self._text_hidden = hidden
+        self.header.eye_btn.set_hidden(hidden)
+        for item in self._active_items.values():
+            item.set_text_hidden(hidden)
+        self.completed_panel.set_text_hidden(hidden)
+        win = getattr(self, "_history_win", None)
+        if win is not None:
+            win.set_text_hidden(hidden)
+
+    def toggle_text_hidden(self):
+        self.set_text_hidden(not self._text_hidden)
+
     def show_header_menu(self, global_pos):
-        """上方栏右键菜单:锁定时可解锁,始终可退出。"""
+        """上方栏右键菜单:退出/最小化(锁定态不弹,见 HeaderBar)。"""
         menu = QMenu(self)
-        if self._locked:
-            menu.addAction(t("main.menu_unlock"), self.unlock)
         menu.addAction(t("main.menu_quit"), QApplication.quit)
+        menu.addAction(t("main.menu_minimize"), self.showMinimized)
         menu.exec(global_pos)
 
     # ---- 边缘 8 方向 resize ----
@@ -1126,14 +1348,16 @@ class MainWindow(QWidget):
     def enterEvent(self, event):
         super().enterEvent(event)
         if self._locked:
-            self.header.lock_btn.setVisible(True)
+            for btn in self._header_icon_btns():
+                btn.setVisible(True)
 
 
     def leaveEvent(self, event):
         super().leaveEvent(event)
-        # 锁定时鼠标移出窗口即隐藏锁头(移入时 enterEvent 再显示)
+        # 锁定时鼠标移出窗口即隐藏图标按钮(移入时 enterEvent 再显示)
         if self._locked:
-            self.header.lock_btn.setVisible(False)
+            for btn in self._header_icon_btns():
+                btn.setVisible(False)
         # 鼠标真正离开窗口且不在缩放中时,复位 resize 光标
         if self._resize_dir is None:
             self._apply_edge_cursor(None)

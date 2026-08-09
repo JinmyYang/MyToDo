@@ -15,6 +15,8 @@ from .i18n import t
 
 ZWSP = "​"  # 零宽空格 U+200B,提供 QLabel 任意字符处的断行点
 
+TEXT_MASK = "•••"  # 隐藏任务内容时的固定掩码:不泄露字数与行数
+
 
 def wrap_for_label(text):
     """在文本的每个字符后插入零宽空格(U+200B),作为 QLabel 的断行点。
@@ -123,6 +125,7 @@ class TaskItem(QWidget):
         super().__init__()
         self.task = task
         self._locked = False
+        self._text_hidden = False  # 隐私模式:展示层用掩码替换任务文本
         self._hovered = False
         self._fit_pending = False
         self._reset_edit_scroll_pending = False
@@ -159,7 +162,7 @@ class TaskItem(QWidget):
         self.stack.setMinimumWidth(0)
         self.stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
 
-        self.label = QLabel(wrap_for_label(task.text or ""))
+        self.label = QLabel(self._display_text())
         self.label.setObjectName("taskText")
         self.label.setWordWrap(True)
         self.label.setTextFormat(Qt.PlainText)
@@ -179,6 +182,18 @@ class TaskItem(QWidget):
         self.stack.addWidget(self.label)
         self.stack.setCurrentIndex(self._LABEL_PAGE)
         lay.addWidget(self.stack, 1)
+
+    # ---- 隐藏文本(隐私模式) ----
+    def _display_text(self):
+        """展示层文本:隐藏态用固定掩码,否则原文+断行零宽空格。"""
+        if self._text_hidden:
+            return TEXT_MASK
+        return wrap_for_label(self.task.text or "")
+
+    def set_text_hidden(self, hidden):
+        self._text_hidden = hidden
+        self.label.setText(self._display_text())
+        self._schedule_fit_height()
 
     # ---- 分隔线 + 悬停 ----
     def paintEvent(self, event):
@@ -297,7 +312,7 @@ class TaskItem(QWidget):
             self.delete_requested.emit(self.task.id)
         elif text != self.task.text:
             self.task.text = text
-            self.label.setText(wrap_for_label(text))
+            self.label.setText(self._display_text())
             self._exit_edit()
             self.text_changed.emit(self.task.id, text)
         else:

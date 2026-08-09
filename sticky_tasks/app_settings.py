@@ -104,6 +104,7 @@ class AppSettings:
     font_size: int = 13
     bg_opacity: int = 238
     language: str = "zh"  # zh / en,界面语言,重启后生效
+    always_on_top: bool = False  # 图钉置顶状态,重启后保持
     window_x: int | None = None
     window_y: int | None = None
     window_width: int | None = None
@@ -143,6 +144,8 @@ class AppSettings:
         lang = data.get("language")
         if isinstance(lang, str) and lang in ("zh", "en"):
             s.language = lang
+        if type(data.get("always_on_top")) is bool:
+            s.always_on_top = data["always_on_top"]
         for key in ("font_size", "bg_opacity"):
             if key in data and type(data[key]) is int:
                 setattr(s, key, data[key])

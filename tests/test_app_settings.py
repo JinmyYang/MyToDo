@@ -128,6 +128,19 @@ def test_language_default_is_zh():
     assert AppSettings().language == "zh"
 
 
+def test_always_on_top_persists_roundtrip(tmp_path):
+    path = tmp_path / "settings.json"
+    AppSettings(always_on_top=True).save(path)
+    assert AppSettings.load(path).always_on_top is True
+
+
+def test_always_on_top_default_false_and_invalid_rejected(tmp_path):
+    assert AppSettings().always_on_top is False
+    path = tmp_path / "settings.json"
+    path.write_text('{"always_on_top": "yes"}', encoding="utf-8")
+    assert AppSettings.load(path).always_on_top is False
+
+
 def test_language_invalid_value_rejected(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text('{"language": "fr"}', encoding="utf-8")

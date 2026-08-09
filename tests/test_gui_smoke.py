@@ -957,3 +957,146 @@ def test_single_instance_lock_blocks_second_acquire(tmp_path):
     assert first.try_acquire() is True
     second = SingleInstance(tmp_path)
     assert second.try_acquire() is False
+
+
+# ---- 图钉置顶 / 眼睛隐藏文本 / 最小化菜单 ----
+def test_pin_toggles_stays_on_top_and_persists(app):
+    """图钉切换置顶,状态写入 settings 跨重启保持。
+
+    运行时置顶走原生 SetWindowPos(不重建窗口、不闪烁),
+    故这里只验证按钮状态与持久化;启动恢复另测 windowFlags。
+    """
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        w = MainWindow(store, settings_path=root / "settings.json")
+        w.show()
+        app.processEvents()
+
+        w.set_always_on_top(True)
+        app.processEvents()
+        assert w.header.pin_btn._pinned
+        w._flush_settings_save()
+        assert AppSettings.load(root / "settings.json").always_on_top is True
+
+        w.set_always_on_top(False)
+        app.processEvents()
+        assert not w.header.pin_btn._pinned
+        w._flush_settings_save()
+        assert AppSettings.load(root / "settings.json").always_on_top is False
+
+
+def test_pin_state_restored_on_startup(app):
+    """重启后按 settings 恢复置顶态(状态模型 + 按钮同步)。"""
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        AppSettings(always_on_top=True).save(root / "settings.json")
+        w = MainWindow(store, settings_path=root / "settings.json")
+        assert w._always_on_top is True
+        assert w.header.pin_btn._pinned
+
+
+def test_eye_masks_text_across_views(app):
+    """隐藏态下主列表、已完成面板、历史窗口统一显示掩码,新建任务同样掩码。"""
+    from sticky_tasks.task_item import TEXT_MASK
+
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        store.add("保留的任务")
+        done = store.add("机密任务")
+        store.complete(done.id)
+        w = MainWindow(store, settings_path=root / "settings.json")
+        w.show()
+        app.processEvents()
+
+        item = list(w._active_items.values())[0]
+        assert "保留的任务" in item.label.text().replace("\u200b", "")
+
+        w.set_text_hidden(True)
+        assert item.label.text() == TEXT_MASK
+        w.toggle_completed()
+        app.processEvents()
+        row = w.completed_panel._row_for[done.id]
+        assert row.findChild(QLabel).text() == TEXT_MASK
+
+        # 隐藏态下新建并编辑任务,提交后仍为掩码(编辑框内是真实文本)
+        w.add_task()
+        app.processEvents()
+        new_item = list(w._active_items.values())[-1]
+        new_item.start_edit()
+        new_item.edit.setPlainText("新增机密")
+        new_item._on_editing_finished()
+        app.processEvents()
+        assert new_item.label.text() == TEXT_MASK
+
+        # 历史窗口同步掩码
+        w.open_history()
+        hw = w._history_win
+        texts = [
+            hw.tree.topLevelItem(i).text(0)
+            for i in range(hw.tree.topLevelItemCount())
+        ]
+        assert texts == [TEXT_MASK]
+
+        # 恢复显示
+        w.set_text_hidden(False)
+        assert "保留的任务" in item.label.text().replace("\u200b", "")
+        assert new_item.label.text().replace("\u200b", "") == "新增机密"
+        assert "机密任务" in row.findChild(QLabel).text().replace("\u200b", "")
+
+
+def test_header_menu_contains_quit_and_minimize(app, monkeypatch):
+    """顶部栏右键菜单含退出与最小化(替换模块内 QMenu 避免真弹菜单)。"""
+    from sticky_tasks import main_window as mw
+
+    captured = {}
+
+    class FakeMenu:
+        def __init__(self, parent=None):
+            self._texts = []
+
+        def addAction(self, text, slot=None):
+            self._texts.append(text)
+
+        def exec(self, *args):
+            captured["actions"] = list(self._texts)
+            return None
+
+    monkeypatch.setattr(mw, "QMenu", FakeMenu)
+    with tempfile.TemporaryDirectory() as d:
+        store = TaskStore(Path(d) / "tasks.json")
+        w = MainWindow(store, settings_path=Path(d) / "settings.json")
+        w.show_header_menu(QPoint(0, 0))
+    assert captured["actions"][-2:] == ["退出", "最小化"]
+
+
+def test_locked_header_right_click_is_ignored(app, monkeypatch):
+    """锁定态下右键顶部栏不弹菜单。"""
+    from sticky_tasks import main_window as mw
+    from PySide6.QtGui import QContextMenuEvent
+
+    captured = {}
+
+    class FakeMenu:
+        def __init__(self, parent=None):
+            pass
+
+        def addAction(self, text, slot=None):
+            pass
+
+        def exec(self, *args):
+            captured["shown"] = True
+            return None
+
+    monkeypatch.setattr(mw, "QMenu", FakeMenu)
+    with tempfile.TemporaryDirectory() as d:
+        store = TaskStore(Path(d) / "tasks.json")
+        w = MainWindow(store, settings_path=Path(d) / "settings.json")
+        w.set_locked(True)
+        ev = QContextMenuEvent(
+            QContextMenuEvent.Reason.Mouse, QPoint(5, 5), QPoint(5, 5),
+        )
+        w.header.contextMenuEvent(ev)
+    assert "shown" not in captured
