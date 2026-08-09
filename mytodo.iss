@@ -8,7 +8,7 @@
 ; 发新版时只改 MyAppVersion;AppId 是升级/卸载的注册表标识,永远不要改。
 
 #define MyAppName "MyToDo"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.1.1"
 #define MyAppPublisher "JinmyYang"
 #define MyAppURL "https://jinmyyang.github.io/MyToDo/"
 
