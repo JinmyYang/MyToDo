@@ -1,5 +1,10 @@
 # MyToDo —— 桌面任务便签
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/JinmyYang/MyToDo/blob/master/LICENSE)
+[![Release](https://img.shields.io/github/v/release/JinmyYang/MyToDo)](https://github.com/JinmyYang/MyToDo/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/JinmyYang/MyToDo/total)](https://github.com/JinmyYang/MyToDo/releases)
+[![Stars](https://img.shields.io/github/stars/JinmyYang/MyToDo)](https://github.com/JinmyYang/MyToDo/stargazers)
+
 一个本地运行的 Windows 桌面任务便签软件,半透明无边框地显示在桌面上,能看到壁纸,类似精简版 Microsoft To Do。
 
 **🌐 官网**：https://jinmyyang.github.io/MyToDo/
@@ -98,3 +103,7 @@ project0711/
 - **半透明 + 圆角**:窗口 `WA_TranslucentBackground` + 容器 `rgba` 背景,文字保持不透明清晰;圆角外区域透明。
 - **拖动**:无边框窗口重写鼠标事件,点标题栏空白处拖动。
 - **空任务自清理**:新建留空的任务在失焦/完成时删除,避免空行堆积。
+
+## 许可证
+
+[MIT](LICENSE) © 2026 JinmyYang
