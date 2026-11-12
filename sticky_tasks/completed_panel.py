@@ -10,6 +10,14 @@ from PySide6.QtGui import QCursor, QColor, QFont
 from .app_settings import Theme
 from .task_item import TEXT_MASK, wrap_for_label
 
+
+def _elide(text, limit=6):
+    """面板很窄,上级任务名太长就截断(完整内容挂在 tooltip 上)。"""
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "…"
+
+
 PANEL_QSS = """
 CompletedPanel { background: transparent; }
 QFrame#completedItem {
@@ -25,6 +33,10 @@ QLabel#doneTextDone {
     color: #8a8a94;
     font-size: 12px;
     text-decoration: line-through;
+}
+QLabel#doneHint {
+    color: #6e6e78;
+    font-size: 11px;
 }
 QPushButton#restoreBtn {
     color: #8a8a94;
@@ -86,6 +98,11 @@ QLabel#doneTextDone {{
     font-size: {max(9, t.font_size - 1)}px;
     text-decoration: line-through;
 }}
+QLabel#doneHint {{
+    color: rgba({ico.red()},{ico.green()},{ico.blue()},175);
+    font-family: "{t.font_family}";
+    font-size: {max(9, t.font_size - 2)}px;
+}}
 QPushButton#restoreBtn {{
     color: rgba({ico.red()},{ico.green()},{ico.blue()},200);
     background: transparent;
@@ -128,6 +145,10 @@ class _CompletedRow(QFrame):
         self.setObjectName("completedItem")
         self.setAttribute(Qt.WA_StyledBackground)
         self._task_id = task_id
+        self.label = None       # 任务文本
+        self.hint = None        # 行尾说明:「N 项子项」或「↳ 上级任务」
+        self.child_count = 0    # 一并完成的子项数
+        self.parent_text = ""   # 上级任务名(用来提示归属)
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
@@ -187,7 +208,8 @@ class CompletedPanel(QWidget):
         self._theme = theme
         self.setStyleSheet(build_panel_qss(theme))
 
-    def set_tasks(self, tasks):
+    def set_tasks(self, entries):
+        """entries: [(task, 子项数, 上级任务名)] —— 连带完成的子项已并进父项那一行。"""
         # 清空旧行(保留末尾 stretch)
         while self.body.count() > 1:
             item = self.body.takeAt(0)
@@ -196,26 +218,39 @@ class CompletedPanel(QWidget):
                 w.deleteLater()
         self._row_for.clear()
         self._text_for.clear()
-        for t in tasks:
-            self._text_for[t.id] = t.text or ""
-            row = self._make_row(t)
+        for task, child_count, parent_text in entries:
+            self._text_for[task.id] = task.text or ""
+            row = self._make_row(task, child_count, parent_text)
             self.body.insertWidget(self.body.count() - 1, row)
-            self._row_for[t.id] = row
+            self._row_for[task.id] = row
         self.body.activate()
 
     def set_text_hidden(self, hidden):
-        """隐私模式:行文本统一换掩码/还原。"""
+        """隐私模式:行文本与上级名称统一换掩码/还原。"""
         self._text_hidden = hidden
         for tid, row in self._row_for.items():
-            lbl = row.findChild(QLabel)
-            if lbl is None:
-                continue
-            lbl.setText(self._display_text(self._text_for.get(tid, "")))
+            if row.label is not None:
+                row.label.setText(self._display_text(self._text_for.get(tid, "")))
+            if row.hint is not None:
+                row.hint.setText(self._hint_text(row))
+
+    def _mask(self, text):
+        if self._text_hidden and text:
+            return TEXT_MASK
+        return text
 
     def _display_text(self, text):
         if self._text_hidden and text:
-            return TEXT_MASK
+            return TEXT_MASK      # 掩码不需要断行点,保持原样
         return wrap_for_label(text if text else "(空任务)")
+
+    def _hint_text(self, row):
+        """行尾说明:子项数优先(父项行),否则提示上级归属(单独完成的子项)。"""
+        if row.child_count:
+            return f"{row.child_count} 项子项"
+        if row.parent_text:
+            return f"↳ {_elide(self._mask(row.parent_text))}"
+        return ""
 
     def content_height(self):
         """返回完整展示当前内容所需的面板高度。
@@ -230,12 +265,15 @@ class CompletedPanel(QWidget):
             lm = row.layout().contentsMargins()
             # 刚创建的行可能尚未布局(width 为 0),回退到面板宽度估算
             row_w = row.width() if row.width() > 0 else self.width()
-            # label 可用宽度 = 行宽 - 左右内边距 - 恢复按钮(22) - 间距(8)
+            # label 可用宽度 = 行宽 - 左右内边距 - 恢复按钮(22) - 间距(8) - 行尾说明 - 行尾说明
+            hint_w = 0
+            if row.hint is not None:
+                hint_w = row.hint.sizeHint().width() + row.layout().spacing()
             text_w = max(
                 40,
-                row_w - lm.left() - lm.right() - 22 - 8,
+                row_w - lm.left() - lm.right() - 22 - 8 - hint_w,
             )
-            lbl = row.findChild(QLabel)
+            lbl = row.label
             if lbl is None:
                 heights.append(34 + lm.top() + lm.bottom())
                 continue
@@ -249,8 +287,10 @@ class CompletedPanel(QWidget):
         return max(42, sum(heights) + spacing + margins.top() + margins.bottom())
 
 
-    def _make_row(self, task):
+    def _make_row(self, task, child_count=0, parent_text=""):
         row = _CompletedRow(task.id)
+        row.child_count = child_count
+        row.parent_text = parent_text
         h = QHBoxLayout(row)
         h.setContentsMargins(10, 5, 6, 5)
         h.setSpacing(8)
@@ -270,12 +310,28 @@ class CompletedPanel(QWidget):
         lbl.setMinimumWidth(0)
         lbl.setMaximumWidth(16777215)
         h.addWidget(lbl, 1)
+        row.label = lbl
+
+        hint_text = self._hint_text(row)
+        if hint_text:
+            hint = QLabel(hint_text)
+            hint.setObjectName("doneHint")
+            hint.setTextFormat(Qt.PlainText)
+            hint.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
+            if self._theme is not None:
+                font = QFont(self._theme.font_family)
+                font.setPixelSize(max(9, self._theme.font_size - 2))
+                hint.setFont(font)
+            hint.setToolTip(parent_text)   # 名字被截断时看完整内容
+            h.addWidget(hint)
+            row.hint = hint
+
         btn = QPushButton("↩")
         btn.setObjectName("restoreBtn")
         btn.setFixedSize(22, 22)
         btn.setCursor(QCursor(Qt.PointingHandCursor))
         btn.setFocusPolicy(Qt.NoFocus)
-        btn.setToolTip("恢复到任务列表")
+        btn.setToolTip("恢复整组" if child_count else "恢复到任务列表")
         btn.clicked.connect(lambda checked=False, tid=task.id: self.restored.emit(tid))
         h.addWidget(btn)
         row.delete_requested.connect(self.deleted)

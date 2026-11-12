@@ -150,6 +150,37 @@ class TaskStore:
             reverse=True,
         )
 
+    def is_batch_child(self, task):
+        """是不是"跟着父项一起完成"的子项。
+
+        父项完成时会级联完成子项并写同一个时间戳,这类子项在已完成面板里
+        不单独占行:恢复父项时它们本来就一起回来。
+        """
+        parent = self.get(task.parent_id) if task.parent_id else None
+        if parent is None or not parent.completed or parent.deleted:
+            return False
+        if task.completed_at is None or parent.completed_at is None:
+            return False
+        return task.completed_at >= parent.completed_at
+
+    def completed_entries(self):
+        """已完成面板的数据源:[(task, 子项数, 上级任务名)]。
+
+        连带完成的子项并到父项那一行(附子项数);单独完成的子项仍占一行,
+        并带上上级任务名,免得看不出它属于哪一组。按完成时间倒序。
+        """
+        entries = []
+        child_counts = {}
+        for task in self.completed_tasks():
+            if self.is_batch_child(task):
+                child_counts[task.parent_id] = child_counts.get(task.parent_id, 0) + 1
+                continue
+            parent = self.get(task.parent_id) if task.parent_id else None
+            entries.append([task, 0, (parent.text or "") if parent else ""])
+        for entry in entries:
+            entry[1] = child_counts.get(entry[0].id, 0)
+        return [tuple(entry) for entry in entries]
+
     def history_tasks(self):
         """返回已完成或已删除任务，最近发生变更的排在前面。"""
         tasks = [t for t in self.tasks if t.completed or t.deleted]

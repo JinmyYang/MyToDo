@@ -514,3 +514,95 @@ def test_history_child_keeps_parent_link_after_reload(tmp_path):
 
     reloaded = TaskStore(tmp_path / "other.json")
     assert reloaded.get(c.id).parent_id is None
+
+
+def test_completed_entries_merge_cascade_children(tmp_path):
+    """整组完成时,子项并进父项那一行,只附一个子项数。"""
+    store = TaskStore(tmp_path / "tasks.json")
+    parent, first, second = _group(store)
+
+    store.complete(parent.id)
+
+    entries = store.completed_entries()
+    assert len(entries) == 1
+    task, child_count, parent_text = entries[0]
+    assert task.id == parent.id
+    assert child_count == 2
+    assert parent_text == ""
+    assert store.is_batch_child(first) is True
+
+
+def test_completed_entries_keep_child_completed_alone(tmp_path):
+    """单独完成的子项仍占一行,并带上上级任务名。"""
+    store = TaskStore(tmp_path / "tasks.json")
+    parent, first, second = _group(store)
+
+    store.complete(first.id)                 # 子项先单独完成
+    first.completed_at = "2026-01-01T09:00:00"
+    store.save()
+    store.complete(parent.id)                # 之后整组完成
+
+    entries = store.completed_entries()
+    by_id = {task.id: (task, count, parent_text) for task, count, parent_text in entries}
+    assert by_id[parent.id][1] == 1          # 只剩 second 是连带完成的
+    assert by_id[first.id][2] == "本周"       # 单独完成的子项标出上级
+    assert by_id[first.id][1] == 0
+    assert store.is_batch_child(first) is False
+
+
+def test_completed_entries_skip_deleted_children(tmp_path):
+    store = TaskStore(tmp_path / "tasks.json")
+    parent, first, second = _group(store)
+    store.complete(parent.id)
+    store.delete(first.id)                   # 连带完成后再删掉其中一个子项
+
+    entries = store.completed_entries()
+
+    assert [task.id for task, _, _ in entries] == [parent.id]
+    assert entries[0][1] == 1
+
+
+def test_completed_entries_merge_cascade_children(tmp_path):
+    """整组完成时,子项并进父项那一行,只附一个子项数。"""
+    store = TaskStore(tmp_path / "tasks.json")
+    parent, first, second = _group(store)
+
+    store.complete(parent.id)
+
+    entries = store.completed_entries()
+    assert len(entries) == 1
+    task, child_count, parent_text = entries[0]
+    assert task.id == parent.id
+    assert child_count == 2
+    assert parent_text == ""
+    assert store.is_batch_child(first) is True
+
+
+def test_completed_entries_keep_child_completed_alone(tmp_path):
+    """单独完成的子项仍占一行,并带上上级任务名。"""
+    store = TaskStore(tmp_path / "tasks.json")
+    parent, first, second = _group(store)
+
+    store.complete(first.id)                 # 子项先单独完成
+    first.completed_at = "2026-01-01T09:00:00"
+    store.save()
+    store.complete(parent.id)                # 之后整组完成
+
+    entries = store.completed_entries()
+    by_id = {task.id: (task, count, parent_text) for task, count, parent_text in entries}
+    assert by_id[parent.id][1] == 1          # 只剩 second 是连带完成的
+    assert by_id[first.id][2] == "本周"       # 单独完成的子项标出上级
+    assert by_id[first.id][1] == 0
+    assert store.is_batch_child(first) is False
+
+
+def test_completed_entries_skip_deleted_children(tmp_path):
+    store = TaskStore(tmp_path / "tasks.json")
+    parent, first, second = _group(store)
+    store.complete(parent.id)
+    store.delete(first.id)                   # 连带完成后再删掉其中一个子项
+
+    entries = store.completed_entries()
+
+    assert [task.id for task, _, _ in entries] == [parent.id]
+    assert entries[0][1] == 1

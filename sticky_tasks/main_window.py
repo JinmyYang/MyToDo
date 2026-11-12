@@ -685,7 +685,7 @@ class MainWindow(QWidget):
         for t in self.store.ordered_active():
             self._add_item_widget(t, focus=False, animate=False)
         self._sync_tree()
-        self.completed_panel.set_tasks(self.store.completed_tasks())
+        self.completed_panel.set_tasks(self.store.completed_entries())
         self._update_footer()
         self._update_empty_hint()
 
@@ -786,13 +786,13 @@ class MainWindow(QWidget):
             return
         self.store.complete(task_id)
         self._sync_tree()
-        self.completed_panel.set_tasks(self.store.completed_tasks())
+        self.completed_panel.set_tasks(self.store.completed_entries())
         self._sync_expanded_panel_height()
         self._update_footer()
 
     def on_restore(self, task_id):
         self.store.restore(task_id)
-        self.completed_panel.set_tasks(self.store.completed_tasks())
+        self.completed_panel.set_tasks(self.store.completed_entries())
         self._sync_expanded_panel_height()
         self._sync_tree()
         self._update_footer()
@@ -978,7 +978,7 @@ class MainWindow(QWidget):
             return
         self._sync_tree()
         # 已完成任务删除后也要刷新面板
-        self.completed_panel.set_tasks(self.store.completed_tasks())
+        self.completed_panel.set_tasks(self.store.completed_entries())
         self._sync_expanded_panel_height()
         self._update_footer()
 
@@ -1186,7 +1186,7 @@ class MainWindow(QWidget):
         for task in self.store.ordered_active():
             self._add_item_widget(task, focus=False, animate=False)
         self._sync_tree()
-        self.completed_panel.set_tasks(self.store.completed_tasks())
+        self.completed_panel.set_tasks(self.store.completed_entries())
         self._sync_expanded_panel_height()
         self._update_footer()
 

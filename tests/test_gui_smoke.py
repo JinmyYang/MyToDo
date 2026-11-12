@@ -1475,3 +1475,119 @@ def test_history_window_shows_parent_task_name(app):
         assert rows[child.id].text(0) == TEXT_MASK
         assert rows[child.id].text(1) == TEXT_MASK
         assert rows[parent.id].text(1) == "—"
+
+
+def test_completed_panel_merges_group_and_restores_whole_group(app):
+    """整组完成只占一行,恢复时整组一起回来。"""
+    with tempfile.TemporaryDirectory() as d:
+        store, w, parent, child, other = _tree_window(Path(d))
+        w.on_complete(parent.id)
+        app.processEvents()
+        w.toggle_completed()
+        app.processEvents()
+
+        # 子项并进父项一行,不再各占一行
+        assert set(w.completed_panel._row_for) == {parent.id}
+        row = w.completed_panel._row_for[parent.id]
+        assert row.child_count == 1
+        assert row.hint.text() == "1 项子项"
+
+        w.on_restore(parent.id)
+        app.processEvents()
+
+        # 恢复和单条任务一致:整组追加到列表末尾
+        assert [t.id for t in store.ordered_active()] == [other.id, parent.id, child.id]
+        assert w.completed_panel._row_for == {}
+        assert [r.task.id for r in w._ordered_task_items()] == [
+            other.id, parent.id, child.id,
+        ]
+
+
+def test_completed_panel_marks_child_completed_alone(app):
+    """单独完成的子项自己占一行,标出上级;恢复后回到原分组。"""
+    from sticky_tasks.task_item import TEXT_MASK
+
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        parent = store.add("本周")
+        child = store.add("写周报", parent_id=parent.id)
+        w = MainWindow(store, settings_path=root / "settings.json")
+        w.show()
+        w.on_complete(child.id)          # 只完成子项,父项还在列表里
+        app.processEvents()
+        w.toggle_completed()
+        app.processEvents()
+
+        row = w.completed_panel._row_for[child.id]
+        assert row.child_count == 0
+        assert row.hint.text() == "↳ 本周"
+
+        # 隐私模式:上级名称也要打码
+        w.set_text_hidden(True)
+        assert row.hint.text() == f"↳ {TEXT_MASK}"
+        w.set_text_hidden(False)
+        assert row.hint.text() == "↳ 本周"
+
+        w.on_restore(child.id)
+        app.processEvents()
+        assert [t.id for t in store.ordered_active()] == [parent.id, child.id]
+        assert store.get(child.id).parent_id == parent.id
+
+
+def test_completed_panel_merges_group_and_restores_whole_group(app):
+    """整组完成只占一行,恢复时整组一起回来。"""
+    with tempfile.TemporaryDirectory() as d:
+        store, w, parent, child, other = _tree_window(Path(d))
+        w.on_complete(parent.id)
+        app.processEvents()
+        w.toggle_completed()
+        app.processEvents()
+
+        # 子项并进父项一行,不再各占一行
+        assert set(w.completed_panel._row_for) == {parent.id}
+        row = w.completed_panel._row_for[parent.id]
+        assert row.child_count == 1
+        assert row.hint.text() == "1 项子项"
+
+        w.on_restore(parent.id)
+        app.processEvents()
+
+        # 恢复和单条任务一致:整组追加到列表末尾
+        assert [t.id for t in store.ordered_active()] == [other.id, parent.id, child.id]
+        assert w.completed_panel._row_for == {}
+        assert [r.task.id for r in w._ordered_task_items()] == [
+            other.id, parent.id, child.id,
+        ]
+
+
+def test_completed_panel_marks_child_completed_alone(app):
+    """单独完成的子项自己占一行,标出上级;恢复后回到原分组。"""
+    from sticky_tasks.task_item import TEXT_MASK
+
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        parent = store.add("本周")
+        child = store.add("写周报", parent_id=parent.id)
+        w = MainWindow(store, settings_path=root / "settings.json")
+        w.show()
+        w.on_complete(child.id)          # 只完成子项,父项还在列表里
+        app.processEvents()
+        w.toggle_completed()
+        app.processEvents()
+
+        row = w.completed_panel._row_for[child.id]
+        assert row.child_count == 0
+        assert row.hint.text() == "↳ 本周"
+
+        # 隐私模式:上级名称也要打码
+        w.set_text_hidden(True)
+        assert row.hint.text() == f"↳ {TEXT_MASK}"
+        w.set_text_hidden(False)
+        assert row.hint.text() == "↳ 本周"
+
+        w.on_restore(child.id)
+        app.processEvents()
+        assert [t.id for t in store.ordered_active()] == [parent.id, child.id]
+        assert store.get(child.id).parent_id == parent.id
