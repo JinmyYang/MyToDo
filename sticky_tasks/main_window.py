@@ -697,8 +697,7 @@ class MainWindow(QWidget):
         item.text_changed.connect(self.on_text_changed)
         item.delete_requested.connect(self.on_delete)
         item.collapse_toggled.connect(self.on_toggle_collapse)
-        item.indent_requested.connect(self.on_indent)
-        item.outdent_requested.connect(self.on_outdent)
+        item.subtask_requested.connect(self.on_add_subtask)
         item.drag_started.connect(self._on_task_drag_started)
         item.drag_moved.connect(self._on_task_drag_moved)
         item.drag_finished.connect(self._on_task_drag_finished)
@@ -741,7 +740,6 @@ class MainWindow(QWidget):
             self.list_layout.removeWidget(item)
             self.list_layout.insertWidget(index, item)
 
-        previous_top = None
         for task in tasks:
             item = self._active_items[task.id]
             children = self.store.active_children(task.id)
@@ -750,16 +748,8 @@ class MainWindow(QWidget):
                 1 if task.parent_id else 0,
                 bool(children),
                 task.collapsed,
-                # 缩进 = 成为上一个同级任务的子项,所以要求上面有顶层行
-                can_indent=(
-                    task.parent_id is None
-                    and not children
-                    and previous_top is not None
-                ),
             )
             item.setVisible(not (parent is not None and parent.collapsed))
-            if task.parent_id is None:
-                previous_top = task.id
         self.list_layout.activate()
         self._update_empty_hint()
 
@@ -818,17 +808,30 @@ class MainWindow(QWidget):
             return
         self._sync_tree()
 
-    def on_indent(self, task_id):
+    def on_add_subtask(self, task_id):
+        """行尾加号:给这条任务新建子项,并直接进入编辑。"""
         if self._locked:
             return
-        if self.store.indent(task_id):
-            self._sync_tree()
+        parent = self.store.get(task_id)
+        if parent is None or parent.parent_id:
+            return      # 只支持两层
+        task = self.store.add("", parent_id=task_id)
+        self._sync_tree()
+        item = self._active_items.get(task.id)
+        if item is None:
+            return
+        item.start_edit()
+        self._reveal_item(item)
 
-    def on_outdent(self, task_id):
-        if self._locked:
-            return
-        if self.store.outdent(task_id):
-            self._sync_tree()
+    def _reveal_item(self, item):
+        """把刚建的行滚进可视区:子项可能落在窗口下方看不见。"""
+        def reveal():
+            try:
+                self.scroll.ensureWidgetVisible(item, 0, 12)
+            except RuntimeError:
+                pass    # 行已被删掉(新建后没输入内容)
+
+        QTimer.singleShot(0, reveal)
 
     def _ordered_task_items(self):
         return [

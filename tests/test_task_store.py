@@ -9,10 +9,8 @@ from sticky_tasks.task_store import TaskStore
 def _group(store):
     """建一个"父项 + 两个子项"的结构,返回 (父, 子1, 子2)。"""
     parent = store.add("本周")
-    first = store.add("写周报")
-    second = store.add("回邮件")
-    assert store.indent(first.id) is True
-    assert store.indent(second.id) is True
+    first = store.add("写周报", parent_id=parent.id)
+    second = store.add("回邮件", parent_id=parent.id)
     return parent, first, second
 
 
@@ -79,7 +77,7 @@ def test_update_text(tmp_path):
     assert store.get(t.id).text == "新文本"
 
 
-def test_reorder_active_tasks_persists_and_preserves_history_slots(tmp_path):
+def test_apply_tree_layout_persists_and_preserves_history_slots(tmp_path):
     path = tmp_path / "tasks.json"
     store = TaskStore(path)
     first = store.add("第一")
@@ -88,12 +86,14 @@ def test_reorder_active_tasks_persists_and_preserves_history_slots(tmp_path):
     third = store.add("第三")
     store.complete(completed.id)
 
-    assert store.reorder_active([third.id, first.id, second.id]) is True
+    assert store.apply_tree_layout([
+        (third.id, 0), (first.id, 0), (second.id, 0),
+    ]) is True
+    # 历史任务在原位置占位,活跃任务按新顺序填进剩下的槽位
     assert [task.id for task in store.tasks] == [third.id, completed.id, first.id, second.id]
 
     loaded = TaskStore(path)
     assert [task.id for task in loaded.active_tasks()] == [third.id, first.id, second.id]
-    assert loaded.reorder_active([third.id, first.id]) is False
 
 
 def test_delete(tmp_path):
@@ -208,7 +208,7 @@ def test_task_defaults_to_top_level(tmp_path):
     assert task.collapsed is False
 
 
-def test_indent_attaches_to_previous_top_level_task(tmp_path):
+def test_add_child_attaches_to_parent(tmp_path):
     store = TaskStore(tmp_path / "tasks.json")
     parent, first, second = _group(store)
 
@@ -219,50 +219,32 @@ def test_indent_attaches_to_previous_top_level_task(tmp_path):
     assert [t.id for t in store.active_children(parent.id)] == [first.id, second.id]
 
 
-def test_indent_needs_a_previous_sibling(tmp_path):
-    store = TaskStore(tmp_path / "tasks.json")
-    only = store.add("唯一一条")
-    assert store.indent(only.id) is False
-    assert only.parent_id is None
-
-
-def test_indent_stops_at_two_levels(tmp_path):
+def test_add_child_stops_at_two_levels(tmp_path):
     store = TaskStore(tmp_path / "tasks.json")
     parent, first, second = _group(store)
 
-    # 子项不能再缩进(否则就是三层)
-    assert store.indent(second.id) is False
-    assert second.parent_id == parent.id
-    # 已经是父项的任务也不能被缩进
-    third = store.add("另一个")
-    store.indent(third.id)          # 变成 parent 的子项
-    assert store.indent(parent.id) is False
-    assert parent.parent_id is None
+    third = store.add("第三层", parent_id=first.id)   # first 自己已经是子项
+    assert third.parent_id is None
+    assert third.level == 0
+    # 父项也不能被塞到别人下面
+    other = store.add("新顶层")
+    assert store.add("第四层", parent_id=parent.id).parent_id == parent.id
+    assert other.parent_id is None
 
 
-def test_indent_places_task_after_existing_children(tmp_path):
+def test_add_child_expands_collapsed_parent(tmp_path):
     store = TaskStore(tmp_path / "tasks.json")
     parent, first, second = _group(store)
-    later = store.add("后加的")
+    store.toggle_collapse(parent.id)
+    assert parent.collapsed is True
 
-    assert store.indent(later.id) is True
+    later = store.add("后加的", parent_id=parent.id)
+
+    assert parent.collapsed is False   # 新建的子项要能立刻看见
     assert store.active_children(parent.id)[-1].id == later.id
     assert [t.id for t in store.ordered_active()] == [
         parent.id, first.id, second.id, later.id,
     ]
-
-
-def test_outdent_promotes_task_below_the_group(tmp_path):
-    store = TaskStore(tmp_path / "tasks.json")
-    parent, first, second = _group(store)
-    other = store.add("另一件事")
-
-    assert store.outdent(first.id) is True
-    assert first.parent_id is None
-    assert [t.id for t in store.ordered_active()] == [
-        parent.id, second.id, first.id, other.id,
-    ]
-    assert store.outdent(parent.id) is False
 
 
 def test_tree_structure_survives_reload(tmp_path):

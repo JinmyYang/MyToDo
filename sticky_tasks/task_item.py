@@ -172,22 +172,88 @@ class ChevronButton(QWidget):
         super().mousePressEvent(event)
 
 
+class PlusButton(QWidget):
+    """行尾的小加号:给这条任务新建一个子项。
+
+    鼠标停在整行上时才显形(平时只占位、不绘制,避免每行尾巴都挂一个符号),
+    所以是否画出来由 TaskItem 的悬停状态驱动,而不是它自己的 hover。
+    """
+    clicked = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(16, 16)
+        self.setFocusPolicy(Qt.NoFocus)
+        self._available = True      # 这一行能不能加子项(子项行/锁定态不能)
+        self._active = False        # 行被悬停时显形
+        self._accent_color = QColor("#5ea0ff")
+        self.setToolTip(t("task.add_subtask"))
+        self._sync_cursor()
+
+    def set_theme(self, theme: Theme):
+        self._accent_color = theme.accent_color
+        self.update()
+
+    def set_available(self, available):
+        available = bool(available)
+        if available == self._available:
+            return
+        self._available = available
+        self.setVisible(available)      # 不可用时彻底不占位,把宽度还给文字
+        if not available:
+            self._active = False
+        self._sync_cursor()
+        self.update()
+
+    def set_active(self, active):
+        active = bool(active) and self._available
+        if active == self._active:
+            return
+        self._active = active
+        self._sync_cursor()
+        self.update()
+
+    def _sync_cursor(self):
+        shape = Qt.PointingHandCursor if self._active else Qt.ArrowCursor
+        self.setCursor(QCursor(shape))
+
+    def paintEvent(self, event):
+        if not self._active:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(self._accent_color, 1.5)
+        pen.setCapStyle(Qt.RoundCap)
+        p.setPen(pen)
+        cx, cy = self.width() / 2, self.height() / 2
+        r = 3.6
+        p.drawLine(QPointF(cx - r, cy), QPointF(cx + r, cy))
+        p.drawLine(QPointF(cx, cy - r), QPointF(cx, cy + r))
+        p.end()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and self._available:
+            self.clicked.emit()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+
 class TaskItem(QWidget):
     """一行任务。
 
     - 点圆点 → completed(task_id)
     - 点右侧箭头 → collapse_toggled(task_id)
-    - 右键 → 编辑/缩进/减少缩进/删除 菜单;编辑提交且变化 → text_changed(task_id, text)
+    - 鼠标停在行上时行尾出现小加号,点它 → subtask_requested(task_id)
+    - 右键 → 编辑/折叠/删除 菜单;编辑提交且变化 → text_changed(task_id, text)
     - 编辑后文本被清空 → delete_requested(task_id)
-    - 编辑时按 Tab / Shift+Tab → indent_requested / outdent_requested
     """
 
     completed = Signal(str)
     text_changed = Signal(str, str)
     delete_requested = Signal(str)
     collapse_toggled = Signal(str)
-    indent_requested = Signal(str)
-    outdent_requested = Signal(str)
+    subtask_requested = Signal(str)
     drag_started = Signal(str, QPoint)
     drag_moved = Signal(str, QPoint)
     drag_finished = Signal(str)
@@ -204,7 +270,6 @@ class TaskItem(QWidget):
         self._level = task.level          # 0 = 顶层,1 = 子项
         self._has_children = False
         self._collapsed = False
-        self._can_indent = False
         self._fit_pending = False
         self._reset_edit_scroll_pending = False
         self._press_global_pos = None
@@ -268,6 +333,12 @@ class TaskItem(QWidget):
         self.chev.setVisible(False)
         lay.addWidget(self.chev)
 
+        # 新建子项的加号:常驻占位,鼠标停在行上才画出来
+        self.plus = PlusButton()
+        self.plus.clicked.connect(lambda: self.subtask_requested.emit(self.task.id))
+        lay.addWidget(self.plus)
+        self._sync_plus()   # 子项建出来就没有下一层,先按初始层级定好占位
+
     # ---- 隐藏文本(隐私模式) ----
     def _display_text(self):
         """展示层文本:隐藏态用固定掩码,否则原文+断行零宽空格。"""
@@ -285,7 +356,7 @@ class TaskItem(QWidget):
     def level(self):
         return self._level
 
-    def set_tree_state(self, level, has_children, collapsed, can_indent=False):
+    def set_tree_state(self, level, has_children, collapsed):
         """更新缩进、折叠箭头与父项字重。
 
         缩进只改左边距,子项因此共享父项的行高逻辑;父项加粗让"标题行"
@@ -294,19 +365,16 @@ class TaskItem(QWidget):
         level = 1 if level else 0
         has_children = bool(has_children)
         collapsed = bool(collapsed)
-        can_indent = bool(can_indent)
         if (
             level == self._level
             and has_children == self._has_children
             and collapsed == self._collapsed
-            and can_indent == self._can_indent
         ):
             return
         relayout = level != self._level
         self._level = level
         self._has_children = has_children
         self._collapsed = collapsed
-        self._can_indent = can_indent
         m = self._layout.contentsMargins()
         left = 12 + level * CHILD_INDENT
         if m.left() != left:
@@ -315,13 +383,20 @@ class TaskItem(QWidget):
         self._apply_label_weight()
         self.chev.set_expanded(not self._collapsed)
         self.chev.setVisible(self._has_children and not self._locked)
+        self._sync_plus()
         if relayout:
             self._schedule_fit_height()
         self.update()
 
     def set_level(self, level):
         """拖拽时实时预览缩进层级,其余树状态保持不变。"""
-        self.set_tree_state(level, self._has_children, self._collapsed, self._can_indent)
+        self.set_tree_state(level, self._has_children, self._collapsed)
+
+    def _sync_plus(self):
+        """行尾加号:子项行没有下一层,锁定态不可编辑,这两种情况都不占位。"""
+        available = self._level == 0 and not self._locked
+        self.plus.set_available(available)
+        self.plus.set_active(available and self._hovered)
 
     def _apply_label_weight(self):
         font = QFont(self._font_family)
@@ -369,11 +444,24 @@ class TaskItem(QWidget):
 
     def enterEvent(self, event):
         self._hovered = True
+        self._sync_plus()
         self.update()
         super().enterEvent(event)
 
+    def mouseMoveEvent(self, event):
+        # 光标从子控件回到行背景时,Leave/Enter 未必成对出现,这里补一次
+        if not self._hovered:
+            self._hovered = True
+            self._sync_plus()
+            self.update()
+        super().mouseMoveEvent(event)
+
     def leaveEvent(self, event):
+        # 光标只是移到了圆点/箭头/加号这些子控件上,整行仍算悬停
+        if self.rect().contains(self.mapFromGlobal(QCursor.pos())):
+            return
         self._hovered = False
+        self._sync_plus()
         self.update()
         super().leaveEvent(event)
 
@@ -394,6 +482,7 @@ class TaskItem(QWidget):
         self._font_size = theme.font_size
         self.dot.set_theme(theme)
         self.chev.set_theme(theme)
+        self.plus.set_theme(theme)
         self._apply_label_weight()
         self._schedule_fit_height()
         self.update()
@@ -470,14 +559,18 @@ class TaskItem(QWidget):
         self._schedule_fit_height()
 
     def _side_space(self):
-        """圆点/折叠箭头占用的横向空间;隐藏后布局不再为它们留位。
+        """圆点/折叠箭头/加号占用的横向空间;隐藏后布局不再为它们留位。
 
         用状态位而非 isVisible() 判断:窗口还没显示时子控件的 isVisible()
         一律为 False,会让行高算少、文本被裁。
         """
-        space = 0 if self._locked else self.dot.width() + self._layout.spacing()
-        if self._has_children and not self._locked:
+        if self._locked:
+            return 0
+        space = self.dot.width() + self._layout.spacing()
+        if self._has_children:
             space += self.chev.width() + self._layout.spacing()
+        if self._level == 0:
+            space += self.plus.width() + self._layout.spacing()
         return space
 
     def _fit_label_height(self):
@@ -604,15 +697,6 @@ class TaskItem(QWidget):
                         return False
                     self._on_editing_finished()
                     return True
-                if event.key() == Qt.Key_Backtab or (
-                    event.key() == Qt.Key_Tab and event.modifiers() & Qt.ShiftModifier
-                ):
-                    # 编辑时 Tab / Shift+Tab 调整层级,不插入制表符(任务本来就是单行)
-                    self.outdent_requested.emit(self.task.id)
-                    return True
-                if event.key() == Qt.Key_Tab:
-                    self.indent_requested.emit(self.task.id)
-                    return True
                 if event.key() == Qt.Key_Escape:
                     self._exit_edit()
                     return True
@@ -667,11 +751,6 @@ class TaskItem(QWidget):
             }
         """)
         act_edit = menu.addAction(t("task.edit"))
-        menu.addSeparator()
-        act_indent = menu.addAction(t("task.indent"))
-        act_indent.setEnabled(self._level == 0 and not self._has_children and self._can_indent)
-        act_outdent = menu.addAction(t("task.outdent"))
-        act_outdent.setEnabled(self._level > 0)
         act_collapse = None
         if self._has_children:
             act_collapse = menu.addAction(
@@ -682,10 +761,6 @@ class TaskItem(QWidget):
         chosen = menu.exec(event.globalPos())
         if chosen is act_edit:
             self.start_edit()
-        elif chosen is act_indent:
-            self.indent_requested.emit(self.task.id)
-        elif chosen is act_outdent:
-            self.outdent_requested.emit(self.task.id)
         elif act_collapse is not None and chosen is act_collapse:
             self.collapse_toggled.emit(self.task.id)
         elif chosen is act_del:
@@ -701,6 +776,7 @@ class TaskItem(QWidget):
         self._locked = locked
         self.dot.setVisible(not locked)
         self.chev.setVisible(self._has_children and not locked)
+        self._sync_plus()
         self.label.setCursor(QCursor(Qt.ArrowCursor if locked else Qt.IBeamCursor))
         if locked and self.stack.currentIndex() == self._EDIT_PAGE:
             self._on_editing_finished()  # 提交而非丢弃已输入的文本

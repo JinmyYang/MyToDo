@@ -243,46 +243,6 @@ class TaskStore:
         if parent is None or not self._is_active(parent):
             task.parent_id = None
 
-    def _clear_stale_collapse(self):
-        for task in self.tasks:
-            if task.collapsed and not self.active_children(task.id):
-                task.collapsed = False
-
-    def indent(self, task_id):
-        """把任务缩进为上一个同级任务的子项。"""
-        task = self.get(task_id)
-        if task is None or task.parent_id or self.active_children(task.id):
-            return False
-        order = self.ordered_active()
-        index = next((i for i, item in enumerate(order) if item.id == task_id), None)
-        if index is None:
-            return False
-        previous = None
-        for item in reversed(order[:index]):
-            if not item.parent_id:
-                previous = item
-                break
-        if previous is None:
-            return False        # 没有上一个同级任务,缩进没有意义
-        siblings = self.active_children(previous.id)
-        anchor = siblings[-1] if siblings else previous
-        task.parent_id = previous.id
-        previous.collapsed = False  # 刚缩进就藏起来会让人以为任务丢了
-        self.tasks.remove(task)
-        self.tasks.insert(self.tasks.index(anchor) + 1, task)
-        self.save()
-        return True
-
-    def outdent(self, task_id):
-        """把子项提升为顶层,位置落在原所属分组之后。"""
-        task = self.get(task_id)
-        if task is None or not task.parent_id:
-            return False
-        task.parent_id = None
-        self._clear_stale_collapse()
-        self.save()
-        return True
-
     def toggle_collapse(self, task_id):
         task = self.get(task_id)
         if task is None or not self.active_children(task_id):
@@ -331,8 +291,10 @@ class TaskStore:
     # ---- 变更 ----
     def add(self, text="", parent_id=None):
         parent = self.get(parent_id) if parent_id else None
-        if parent is None or not self._is_active(parent):
+        if parent is None or not self._is_active(parent) or parent.parent_id:
             parent_id = None
+        else:
+            parent.collapsed = False    # 新子项要能立刻看见
         task = Task(id=str(uuid.uuid4()), text=text, parent_id=parent_id)
         self.tasks.append(task)
         self.save()
@@ -343,25 +305,6 @@ class TaskStore:
         if t is not None:
             t.text = text
             self.save()
-
-    def reorder_active(self, task_ids):
-        """按给定 ID 顺序重排活跃任务(不改层级),并保留历史任务的相对位置。"""
-        active = self.active_tasks()
-        current_ids = [task.id for task in active]
-        ordered_ids = list(task_ids)
-        if len(ordered_ids) != len(current_ids) or set(ordered_ids) != set(current_ids):
-            return False
-        if ordered_ids == current_ids:
-            return False
-
-        active_by_id = {task.id: task for task in active}
-        reordered = iter(active_by_id[task_id] for task_id in ordered_ids)
-        self.tasks = [
-            next(reordered) if self._is_active(task) else task
-            for task in self.tasks
-        ]
-        self.save()
-        return True
 
     def complete(self, task_id):
         """完成任务;父项完成时子项一并完成,否则它们会留在列表里失去归属。"""
