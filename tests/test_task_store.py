@@ -531,3 +531,21 @@ def test_restoring_child_expands_collapsed_parent(tmp_path):
 
     assert parent.collapsed is False
     assert first.id in [t.id for t in store.visible_active()]
+
+def test_restore_many_brings_parent_and_keeps_link(tmp_path):
+    """批量恢复子项时把上级一并带回;数组里子项排在父项前面也不会被提升成顶层。"""
+    store = TaskStore(tmp_path / "tasks.json")
+    parent, first, second = _group(store)
+    store.complete(parent.id)
+
+    # 人为把子项排到父项前面,模拟恢复/拖拽之后数组顺序被打乱
+    store.tasks = [first, second, parent]
+    store.save()
+
+    restored = store.restore_many([first.id])
+
+    assert {t.id for t in restored} == {parent.id, first.id}
+    assert store.get(first.id).parent_id == parent.id
+    assert [t.id for t in store.ordered_active()] == [parent.id, first.id]
+    # 兄弟项没被选中,继续留在已完成里
+    assert [t.id for t in store.completed_tasks()] == [second.id]

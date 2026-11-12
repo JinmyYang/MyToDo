@@ -159,7 +159,7 @@ class TaskStore:
         entries = []
         for task in self.completed_tasks():
             parent = self.get(task.parent_id) if task.parent_id else None
-            parent_text = (parent.text or "") if parent is not None else ""
+            parent_text = (parent.text or "(空任务)") if parent is not None else ""
             with_parent = parent is not None and not self._is_active(parent)
             entries.append((task, parent_text, with_parent))
         return entries
@@ -403,6 +403,12 @@ class TaskStore:
         ids = set(task_ids)
         for task_id in list(ids):
             ids.update(child.id for child in self.descendants(task_id))
+        # 子项不能脱离上级:把它的上级也一起恢复,否则只能被提升成顶层
+        for task_id in list(ids):
+            task = self.get(task_id)
+            if task is not None and task.parent_id:
+                ids.add(task.parent_id)
+
         restored = []
         for task in self.tasks:
             if task.id in ids and (task.completed or task.deleted):
@@ -410,9 +416,12 @@ class TaskStore:
                 task.completed_at = None
                 task.deleted = False
                 task.deleted_at = None
-                self._promote_if_orphaned(task)
                 restored.append(task)
         if restored:
+            # 先统一改状态,再判断孤儿:否则数组里子项排在父项前面时,
+            # 子项会误判成"上级还在历史里"而被提升成顶层。
+            for task in restored:
+                self._promote_if_orphaned(task)
             self.save()
         return restored
 

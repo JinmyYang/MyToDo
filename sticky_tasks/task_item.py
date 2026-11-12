@@ -371,7 +371,6 @@ class TaskItem(QWidget):
             and collapsed == self._collapsed
         ):
             return
-        relayout = level != self._level
         self._level = level
         self._has_children = has_children
         self._collapsed = collapsed
@@ -379,13 +378,13 @@ class TaskItem(QWidget):
         left = 12 + level * CHILD_INDENT
         if m.left() != left:
             self._layout.setContentsMargins(left, m.top(), m.right(), m.bottom())
-            relayout = True
         self._apply_label_weight()
         self.chev.set_expanded(not self._collapsed)
         self.chev.setVisible(self._has_children and not self._locked)
         self._sync_plus()
-        if relayout:
-            self._schedule_fit_height()
+        # 缩进、箭头、加号都会改变文字可用宽度,必须重新按宽度算一次行高:
+        # 否则"刚变成父项"那一下箭头挤掉 26px,长文本会被裁掉最后一行。
+        self._schedule_fit_height()
         self.update()
 
     def set_level(self, level):

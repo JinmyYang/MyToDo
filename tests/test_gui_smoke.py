@@ -1451,11 +1451,14 @@ def test_completed_panel_marks_child_completed_alone(app):
         assert row.hint.text() == "↳ 本周"
         assert row.with_parent is False   # 上级还在列表里,无需连带恢复
 
-        # 隐私模式:上级名称也要打码
+        # 隐私模式:上级名称(含 tooltip)也要打码
+        assert row.hint.toolTip() == "本周"
         w.set_text_hidden(True)
         assert row.hint.text() == f"↳ {TEXT_MASK}"
+        assert row.hint.toolTip() == TEXT_MASK
         w.set_text_hidden(False)
         assert row.hint.text() == "↳ 本周"
+        assert row.hint.toolTip() == "本周"
 
         w.on_restore(child.id)
         app.processEvents()
@@ -1555,3 +1558,26 @@ def test_child_highlight_follows_indent(app):
         assert parent_rect.left() == 4
         assert child_rect.left() == 4 + CHILD_INDENT
         assert child_rect.right() == parent_rect.right()
+
+def test_row_height_refits_when_chevron_appears(app):
+    """任务刚变成父项时,折叠箭头会占掉约 26px 宽度,行高必须重算。
+
+    否则长文本在窄窗口里会少显示一行(最后一行被裁掉)。
+    """
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        # 22 个字在 240px 宽度下刚好折成两行,箭头一挤就变三行
+        task = store.add(("一二三四五六七八九十" * 3)[:22])
+        store.add("别的任务")
+        w = MainWindow(store, settings_path=root / "settings.json")
+        w.resize(240, 400)
+        w.show()
+        app.processEvents()
+
+        item = w._active_items[task.id]
+        w.on_add_subtask(task.id)      # 变成父项:箭头出现,文字可用宽度变小
+        app.processEvents()
+
+        needed = item.label.heightForWidth(item.label.width())
+        assert item.label.height() >= needed

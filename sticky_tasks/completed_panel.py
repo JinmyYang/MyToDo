@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QMenu, QSizePolicy,
 )
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QCursor, QColor, QFont
+from PySide6.QtGui import QCursor, QFont
 
 from .app_settings import Theme
 from .task_item import TEXT_MASK, wrap_for_label
@@ -233,6 +233,7 @@ class CompletedPanel(QWidget):
                 row.label.setText(self._display_text(self._text_for.get(tid, "")))
             if row.hint is not None:
                 row.hint.setText(self._hint_text(row))
+                row.hint.setToolTip(self._mask(row.parent_text))
 
     def _mask(self, text):
         if self._text_hidden and text:
@@ -263,7 +264,7 @@ class CompletedPanel(QWidget):
             lm = row.layout().contentsMargins()
             # 刚创建的行可能尚未布局(width 为 0),回退到面板宽度估算
             row_w = row.width() if row.width() > 0 else self.width()
-            # label 可用宽度 = 行宽 - 左右内边距 - 恢复按钮(22) - 间距(8) - 行尾说明 - 行尾说明
+            # label 可用宽度 = 行宽 - 左右内边距 - 恢复按钮(22) - 间距(8) - 行尾说明
             hint_w = 0
             if row.hint is not None:
                 hint_w = row.hint.sizeHint().width() + row.layout().spacing()
@@ -320,7 +321,7 @@ class CompletedPanel(QWidget):
                 font = QFont(self._theme.font_family)
                 font.setPixelSize(max(9, self._theme.font_size - 2))
                 hint.setFont(font)
-            hint.setToolTip(parent_text)   # 名字被截断时看完整内容
+            hint.setToolTip(self._mask(parent_text))   # 名字被截断时看完整内容
             h.addWidget(hint)
             row.hint = hint
 
