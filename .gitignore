@@ -20,3 +20,9 @@ Thumbs.db
 build/
 dist/
 release/
+
+# WorkBuddy 项目数据(记忆、技能等)
+.workbuddy/
+
+# 本机临时丢弃区(项目垃圾桶),不入库
+项目垃圾桶_要删的东西扔这里_这是为避免触发workbuddy删除限制而弄的文件夹_不要查看_不要加入git/
