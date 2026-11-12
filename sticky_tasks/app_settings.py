@@ -1,6 +1,6 @@
 """应用设置:用户自定义外观 + 自动对比色派生。
 
-持久化到软件目录下的 .sticky_tasks/settings.json,与 tasks.json 同目录。
+持久化到 %APPDATA%\\MyToDo/settings.json,与 tasks.json 同目录。
 """
 
 from __future__ import annotations

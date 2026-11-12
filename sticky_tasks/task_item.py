@@ -1,4 +1,4 @@
-﻿"""单个任务项:圆点(点击完成)+ 文字(右键编辑/删除)+ 锁定开锁。"""
+﻿"""单个任务项:圆点(点击完成)+ 文字(右键编辑/删除)+ 行尾加号/折叠箭头。"""
 
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QLabel, QStackedWidget,

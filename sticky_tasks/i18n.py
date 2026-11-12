@@ -48,7 +48,7 @@ _TRANSLATIONS = {
         "common.later": "稍后",
         # ---- 主窗口 ----
         "app.running": "{name} 已在运行,请勿重复打开。",
-        "app.crash": "程序遇到了意外错误。\n错误详情已记录到 .sticky_tasks/crash.log，反馈问题时请附带该文件。",
+        "app.crash": "程序遇到了意外错误。\n错误详情已记录到 %APPDATA%\\MyToDo\\crash.log，反馈问题时请附带该文件。",
         "app.data_warning": "本地数据提示",
         "main.new_tooltip": "新建任务 (Ctrl+N)",
         "main.empty_hint": "暂无任务 —— 点击上方 + 或按 Ctrl+N 新建",
@@ -106,7 +106,7 @@ _TRANSLATIONS = {
         "common.later": "Later",
         # ---- Main window ----
         "app.running": "{name} is already running.",
-        "app.crash": "An unexpected error occurred.\nDetails were saved to .sticky_tasks/crash.log — please attach it when reporting.",
+        "app.crash": "An unexpected error occurred.\nDetails were saved to %APPDATA%\\MyToDo\\crash.log — please attach it when reporting.",
         "app.data_warning": "Local Data Notice",
         "main.new_tooltip": "New task (Ctrl+N)",
         "main.empty_hint": "No tasks — click + above or press Ctrl+N",

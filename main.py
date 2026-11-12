@@ -1,7 +1,7 @@
 """MyToDo 桌面任务便签 —— 入口。
 
 运行:python main.py
-数据存于软件目录下的 .sticky_tasks 文件夹。
+数据存于 %APPDATA%\\MyToDo(旧便携版 .sticky_tasks 的数据首次启动时自动迁入)。
 """
 
 import os

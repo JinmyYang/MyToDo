@@ -25,7 +25,7 @@ project0711 — **MyToDo**，一个**桌面任务便签软件**(本地运行,Win
 
 - 语言: Python 3.13
 - GUI 框架: PySide6 (Qt for Python) 6.11
-- 数据持久化: JSON 文件(存于软件目录下的 `.sticky_tasks/tasks.json`,原子写入)
+- 数据持久化: JSON 文件(存于 `%APPDATA%\MyToDo\tasks.json`,原子写入;旧便携版 `.sticky_tasks` 会自动迁入)
 - 版本与名称: `sticky_tasks/__init__.py` 中的 `APP_NAME` / `APP_VERSION`(发 Release 时 tag 用 v{版本号})
 - 测试: pytest
 - 包管理: pip + requirements.txt
