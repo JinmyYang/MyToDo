@@ -674,12 +674,17 @@ class MainWindow(QWidget):
         self._empty_hint.setVisible(not self._active_items)
 
     def load_tasks(self):
-        # 清理上次退出时残留的空任务(新建后未输入即退出所致)
-        empty_ids = [t.id for t in self.store.active_tasks() if not t.text.strip()]
+        # 清理上次退出时残留的空任务(新建后未输入即退出所致);
+        # 带子项的空任务可能是没写名字的分组,不能连带子项一起清掉
+        empty_ids = [
+            t.id for t in self.store.active_tasks()
+            if not t.text.strip() and not self.store.active_children(t.id)
+        ]
         if empty_ids:
             self.store.permanent_delete(empty_ids)
-        for t in self.store.active_tasks():
+        for t in self.store.ordered_active():
             self._add_item_widget(t, focus=False, animate=False)
+        self._sync_tree()
         self.completed_panel.set_tasks(self.store.completed_tasks())
         self._update_footer()
         self._update_empty_hint()
@@ -691,6 +696,9 @@ class MainWindow(QWidget):
         item.completed.connect(self.on_complete)
         item.text_changed.connect(self.on_text_changed)
         item.delete_requested.connect(self.on_delete)
+        item.collapse_toggled.connect(self.on_toggle_collapse)
+        item.indent_requested.connect(self.on_indent)
+        item.outdent_requested.connect(self.on_outdent)
         item.drag_started.connect(self._on_task_drag_started)
         item.drag_moved.connect(self._on_task_drag_moved)
         item.drag_finished.connect(self._on_task_drag_finished)
@@ -707,6 +715,53 @@ class MainWindow(QWidget):
             item.start_edit()
         self._update_empty_hint()
         return item
+
+    def _sync_tree(self):
+        """按数据层顺序刷新行顺序、缩进、折叠箭头与可见性。
+
+        列表布局里始终保留全部活跃行(折叠的子项只是隐藏,不是移除),
+        这样布局索引与树序一一对应,拖拽和缩进都不用做索引换算。
+        """
+        tasks = self.store.ordered_active()
+        ids = {task.id for task in tasks}
+        for task in tasks:
+            if task.id not in self._active_items:
+                self._add_item_widget(task, focus=False, animate=True)
+        for tid in list(self._active_items):
+            if tid not in ids:
+                item = self._active_items.pop(tid)
+                self.list_layout.removeWidget(item)
+                item.deleteLater()
+
+        for index, task in enumerate(tasks):
+            item = self._active_items[task.id]
+            current = self.list_layout.itemAt(index)
+            if current is not None and current.widget() is item:
+                continue
+            self.list_layout.removeWidget(item)
+            self.list_layout.insertWidget(index, item)
+
+        previous_top = None
+        for task in tasks:
+            item = self._active_items[task.id]
+            children = self.store.active_children(task.id)
+            parent = self.store.get(task.parent_id) if task.parent_id else None
+            item.set_tree_state(
+                1 if task.parent_id else 0,
+                bool(children),
+                task.collapsed,
+                # 缩进 = 成为上一个同级任务的子项,所以要求上面有顶层行
+                can_indent=(
+                    task.parent_id is None
+                    and not children
+                    and previous_top is not None
+                ),
+            )
+            item.setVisible(not (parent is not None and parent.collapsed))
+            if task.parent_id is None:
+                previous_top = task.id
+        self.list_layout.activate()
+        self._update_empty_hint()
 
     def _fade_in(self, item):
         """新任务行淡入,完成后移除特效减少渲染开销。"""
@@ -728,36 +783,52 @@ class MainWindow(QWidget):
             return
         task = self.store.add("")
         self._add_item_widget(task, focus=True)
+        self._sync_tree()
 
     def on_complete(self, task_id):
         task = self.store.get(task_id)
         if task is None:
             return
-        if task.text.strip() == "":
+        children = self.store.active_children(task_id)
+        if task.text.strip() == "" and not children:
             # 空任务:直接删除,不进已完成栏
             self.on_delete(task_id, permanent=True)
             return
         self.store.complete(task_id)
-        item = self._active_items.pop(task_id, None)
-        if item is not None:
-            self.list_layout.removeWidget(item)
-            item.deleteLater()
+        self._sync_tree()
         self.completed_panel.set_tasks(self.store.completed_tasks())
         self._sync_expanded_panel_height()
         self._update_footer()
-        self._update_empty_hint()
 
     def on_restore(self, task_id):
         self.store.restore(task_id)
         self.completed_panel.set_tasks(self.store.completed_tasks())
         self._sync_expanded_panel_height()
-        task = self.store.get(task_id)
-        if task is not None:
-            self._add_item_widget(task, focus=False)
+        self._sync_tree()
         self._update_footer()
 
     def on_text_changed(self, task_id, text):
         self.store.update_text(task_id, text)
+
+    # ---- 层级操作 ----
+    def on_toggle_collapse(self, task_id):
+        if self._locked:
+            return
+        if self.store.toggle_collapse(task_id) is None:
+            return
+        self._sync_tree()
+
+    def on_indent(self, task_id):
+        if self._locked:
+            return
+        if self.store.indent(task_id):
+            self._sync_tree()
+
+    def on_outdent(self, task_id):
+        if self._locked:
+            return
+        if self.store.outdent(task_id):
+            self._sync_tree()
 
     def _ordered_task_items(self):
         return [
@@ -780,28 +851,79 @@ class MainWindow(QWidget):
         self._task_drag_global_pos = global_pos
         self._reorder_dragged_task(global_pos)
 
+    def _dragged_block(self):
+        """被拖拽的行连同它的子行:折叠时子行也得跟着走,否则结构会散。"""
+        dragged_id = self._dragged_task_id
+        if dragged_id is None:
+            return []
+        block = []
+        for task in [self.store.get(dragged_id)] + self.store.children_of(dragged_id):
+            if task is None:
+                continue
+            item = self._active_items.get(task.id)
+            if item is not None:
+                block.append(item)
+        return block
+
+    def _drag_signature(self):
+        return [(item.task.id, item.level) for item in self._ordered_task_items()]
+
+    def _drop_slot(self, items, block, pointer_y):
+        """算出插入位置:(插到哪一行之前, 新层级);None 表示插到末尾。
+
+        层级跟随插入点下面那一行——落在子项区就变成那一组的子项,
+        落在顶层行之间就是顶层,末尾跟随最后一行的层级。
+        """
+        visible = [item for item in items if item not in block and item.isVisible()]
+        boundary = len(visible)
+        for index, item in enumerate(visible):
+            if pointer_y < item.geometry().center().y():
+                boundary = index
+                break
+        if boundary < len(visible):
+            anchor = visible[boundary]
+            level = 1 if anchor.task.parent_id else 0
+        elif visible:
+            anchor = None
+            level = 1 if visible[-1].task.parent_id else 0
+        else:
+            anchor, level = None, 0
+        # 带子项的块只能在顶层移动:落到子项区就改插到该组之前(或列表末尾)
+        if level > 0 and len(block) > 1:
+            level = 0
+            if anchor is not None:
+                group_id = anchor.task.parent_id
+                anchor = next(
+                    (item for item in visible if item.task.id == group_id), None
+                )
+        return anchor, level
+
     def _reorder_dragged_task(self, global_pos):
-        dragged = self._active_items.get(self._dragged_task_id)
-        if dragged is None:
+        block = self._dragged_block()
+        if not block:
             return
+        dragged = block[0]
         items = self._ordered_task_items()
         if dragged not in items:
             return
 
+        before = self._drag_signature()
         pointer_y = self.list_widget.mapFromGlobal(global_pos).y()
-        others = [item for item in items if item is not dragged]
-        target_index = len(others)
-        for index, item in enumerate(others):
-            if pointer_y < item.geometry().center().y():
-                target_index = index
-                break
-        if target_index == items.index(dragged):
-            return
+        anchor, level = self._drop_slot(items, block, pointer_y)
 
-        self.list_layout.removeWidget(dragged)
-        self.list_layout.insertWidget(target_index, dragged)
+        for widget in block:
+            self.list_layout.removeWidget(widget)
+        if anchor is not None:
+            insert_at = self.list_layout.indexOf(anchor)
+        else:
+            insert_at = self.list_layout.indexOf(self._inline_add_btn)
+        if insert_at < 0:
+            insert_at = max(0, self.list_layout.count() - 1)
+        for offset, widget in enumerate(block):
+            self.list_layout.insertWidget(insert_at + offset, widget)
         self.list_layout.activate()
-        self._task_drag_order_changed = True
+        dragged.set_level(level)
+        self._task_drag_order_changed = self._drag_signature() != before
 
     def _auto_scroll_task_drag(self):
         if self._dragged_task_id is None or self._task_drag_global_pos is None:
@@ -828,18 +950,22 @@ class MainWindow(QWidget):
             return
         self._task_drag_scroll_timer.stop()
         if self._task_drag_order_changed:
-            ordered_items = self._ordered_task_items()
-            ordered_ids = [item.task.id for item in ordered_items]
-            self.store.reorder_active(ordered_ids)
-            self._active_items = {item.task.id: item for item in ordered_items}
+            rows = [(item.task.id, item.level) for item in self._ordered_task_items()]
+            self.store.apply_tree_layout(rows)
         self._dragged_task_id = None
         self._task_drag_global_pos = None
         self._task_drag_order_changed = False
+        self._sync_tree()
 
     def on_delete(self, task_id, permanent=False):
         task = self.store.get(task_id)
-        # 从未有过内容的任务(如点 + 后未输入直接取消)不留历史记录
-        if task is not None and task.text.strip() == "":
+        # 从未有过内容的任务(如点 + 后未输入直接取消)不留历史记录;
+        # 但它要是已经带了子项,就不能顺手把整组永久删掉
+        if (
+            task is not None
+            and task.text.strip() == ""
+            and not self.store.active_children(task_id)
+        ):
             permanent = True
         if permanent:
             deleted = self.store.permanent_delete([task_id])
@@ -847,15 +973,11 @@ class MainWindow(QWidget):
             deleted = [self.store.delete(task_id)]
         if not deleted or deleted[0] is None:
             return
-        item = self._active_items.pop(task_id, None)
-        if item is not None:
-            self.list_layout.removeWidget(item)
-            item.deleteLater()
+        self._sync_tree()
         # 已完成任务删除后也要刷新面板
         self.completed_panel.set_tasks(self.store.completed_tasks())
         self._sync_expanded_panel_height()
         self._update_footer()
-        self._update_empty_hint()
 
     # ---- 已完成面板展开/折叠(向下扩展窗口高度,不挤压任务列表)----
     def toggle_completed(self):
@@ -1058,12 +1180,12 @@ class MainWindow(QWidget):
             self.list_layout.removeWidget(item)
             item.deleteLater()
         self._active_items.clear()
-        for task in self.store.active_tasks():
+        for task in self.store.ordered_active():
             self._add_item_widget(task, focus=False, animate=False)
+        self._sync_tree()
         self.completed_panel.set_tasks(self.store.completed_tasks())
         self._sync_expanded_panel_height()
         self._update_footer()
-        self._update_empty_hint()
 
     def _on_settings_changed(self):
         """设置变动立即预览，短时间内的连续磁盘写入合并保存。"""

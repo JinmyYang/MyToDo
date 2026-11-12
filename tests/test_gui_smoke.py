@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import Qt, QEvent, QPointF, QPoint
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtGui import QMouseEvent, QFont
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel
 
@@ -1100,3 +1100,189 @@ def test_locked_header_right_click_is_ignored(app, monkeypatch):
         )
         w.header.contextMenuEvent(ev)
     assert "shown" not in captured
+
+
+# ---- 两层树:缩进 / 折叠 / 级联完成 / 拖拽换组 ----
+
+def _tree_window(root):
+    store = TaskStore(root / "tasks.json")
+    parent = store.add("本周")
+    child = store.add("写周报")
+    other = store.add("别的")
+    w = MainWindow(store, settings_path=root / "settings.json")
+    w.show()
+    QApplication.processEvents()
+    return store, w, parent, child, other
+
+
+def test_indent_creates_child_row_with_chevron(app):
+    with tempfile.TemporaryDirectory() as d:
+        store, w, parent, child, other = _tree_window(Path(d))
+        assert w._active_items[child.id].level == 0
+
+        w.on_indent(child.id)
+        app.processEvents()
+
+        assert store.get(child.id).parent_id == parent.id
+        item = w._active_items[child.id]
+        assert item.level == 1
+        assert item._layout.contentsMargins().left() > w._active_items[parent.id]._layout.contentsMargins().left()
+        # 父项出现折叠箭头且加粗
+        assert w._active_items[parent.id].chev.isVisible()
+        assert not item.chev.isVisible()
+        assert w._active_items[parent.id].label.font().weight() == QFont.DemiBold
+        # 行顺序:父项紧跟子项
+        assert [row.task.id for row in w._ordered_task_items()] == [
+            parent.id, child.id, other.id,
+        ]
+
+
+def test_collapse_hides_child_rows_and_persists(app):
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store, w, parent, child, other = _tree_window(root)
+        w.on_indent(child.id)
+        app.processEvents()
+
+        w.on_toggle_collapse(parent.id)
+        app.processEvents()
+
+        assert store.get(parent.id).collapsed is True
+        assert w._active_items[child.id].isVisible() is False
+        assert w._active_items[parent.id].isVisible() is True
+        assert w._active_items[parent.id].chev.isVisible()
+
+        # 重新打开窗口仍保持折叠
+        w.close()
+        w2 = MainWindow(TaskStore(root / "tasks.json"), settings_path=root / "settings.json")
+        w2.show()
+        app.processEvents()
+        assert w2._active_items[child.id].isVisible() is False
+
+        w2.on_toggle_collapse(parent.id)
+        app.processEvents()
+        assert w2._active_items[child.id].isVisible() is True
+
+
+def test_completing_parent_cascades_to_children(app):
+    with tempfile.TemporaryDirectory() as d:
+        store, w, parent, child, other = _tree_window(Path(d))
+        w.on_indent(child.id)
+        app.processEvents()
+
+        w.on_complete(parent.id)
+        app.processEvents()
+
+        assert [t.id for t in store.active_tasks()] == [other.id]
+        assert {t.id for t in store.completed_tasks()} == {parent.id, child.id}
+        assert set(w._active_items) == {other.id}
+
+        # 恢复父项时子项一起回来
+        w.on_restore(parent.id)
+        app.processEvents()
+        assert [row.task.id for row in w._ordered_task_items()] == [
+            other.id, parent.id, child.id,
+        ]
+
+
+def test_tab_and_shift_tab_change_level_while_editing(app):
+    with tempfile.TemporaryDirectory() as d:
+        store, w, parent, child, other = _tree_window(Path(d))
+        item = w._active_items[child.id]
+        item.start_edit()
+        app.processEvents()
+
+        QTest.keyClick(item.edit, Qt.Key_Tab)
+        app.processEvents()
+        assert store.get(child.id).parent_id == parent.id
+        assert item.level == 1
+
+        QTest.keyClick(item.edit, Qt.Key_Backtab)
+        app.processEvents()
+        assert store.get(child.id).parent_id is None
+        assert item.level == 0
+
+
+def test_drag_into_group_changes_parent(app):
+    with tempfile.TemporaryDirectory() as d:
+        store, w, parent, child, other = _tree_window(Path(d))
+        w.on_indent(child.id)
+        app.processEvents()
+
+        dragged = w._active_items[other.id]
+        target = w._active_items[child.id]
+        press_global = dragged.label.mapToGlobal(dragged.label.rect().center())
+        press = QMouseEvent(
+            QEvent.MouseButtonPress,
+            QPointF(dragged.label.rect().center()),
+            QPointF(press_global),
+            Qt.LeftButton,
+            Qt.LeftButton,
+            Qt.NoModifier,
+        )
+        assert dragged.eventFilter(dragged.label, press) is True
+        QTest.qWait(dragged.LONG_PRESS_MS + 30)
+        assert dragged._dragging is True
+
+        # 拖到子项行的上半部分 → 成为同一组的子项
+        drop_global = target.mapToGlobal(QPoint(target.width() // 2, target.height() // 4))
+        move = QMouseEvent(
+            QEvent.MouseMove,
+            QPointF(dragged.label.mapFromGlobal(drop_global)),
+            QPointF(drop_global),
+            Qt.NoButton,
+            Qt.LeftButton,
+            Qt.NoModifier,
+        )
+        assert dragged.eventFilter(dragged.label, move) is True
+        app.processEvents()
+        assert dragged.level == 1
+
+        release = QMouseEvent(
+            QEvent.MouseButtonRelease,
+            QPointF(dragged.label.mapFromGlobal(drop_global)),
+            QPointF(drop_global),
+            Qt.LeftButton,
+            Qt.NoButton,
+            Qt.NoModifier,
+        )
+        assert dragged.eventFilter(dragged.label, release) is True
+        app.processEvents()
+
+        assert store.get(other.id).parent_id == parent.id
+        assert [t.id for t in store.ordered_active()] == [parent.id, other.id, child.id]
+
+
+def test_locked_rows_hide_chevron(app):
+    with tempfile.TemporaryDirectory() as d:
+        store, w, parent, child, other = _tree_window(Path(d))
+        w.on_indent(child.id)
+        app.processEvents()
+        w.set_locked(True)
+        app.processEvents()
+        assert w._active_items[parent.id].chev.isVisible() is False
+        w.set_locked(False)
+        app.processEvents()
+        assert w._active_items[parent.id].chev.isVisible() is True
+
+
+def test_empty_parent_is_completed_instead_of_deleted(app):
+    """名字被清空的分组点完成时,不能把子项一起永久删掉。"""
+    with tempfile.TemporaryDirectory() as d:
+        store = TaskStore(Path(d) / "tasks.json")
+        parent = store.add("分组")
+        child = store.add("子任务")
+        w = MainWindow(store, settings_path=Path(d) / "settings.json")
+        w.show()
+        app.processEvents()
+        w.on_indent(child.id)
+        app.processEvents()
+        store.update_text(parent.id, "")   # 用户把分组名字清空了
+
+        w.on_complete(parent.id)
+        app.processEvents()
+
+        assert store.get(parent.id) is not None
+        assert store.get(child.id) is not None
+        assert store.get(child.id).completed is True
+        assert w._active_items == {}

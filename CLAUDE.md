@@ -9,6 +9,7 @@ project0711 — **MyToDo**，一个**桌面任务便签软件**(本地运行,Win
 - 半透明、无边框、普通窗口层级(非置顶),能看到壁纸
 - 点加号创建任务,双击任务文字编辑
 - 点任务左侧小圆点 → 任务从桌面消失并标记完成 → 进入"已完成"隐藏栏
+- 支持两层分组:任务可缩进成上一条任务的子项(Tab / Shift+Tab / 右键菜单),父项可折叠子项
 - 已完成栏可展开,一键把任务恢复回主列表
 - 删除任务进入历史任务,可批量恢复或永久删除
 - 外观可自定义(主题/字体/字号/透明度),支持保存预设
@@ -44,9 +45,9 @@ project0711/
 │   ├── app_paths.py         # 数据/日志等路径解析
 │   ├── app_settings.py      # 外观设置模型与主题派生
 │   ├── updater.py           # 检查更新(GitHub Releases API,仓库地址待填)
-│   ├── task_store.py        # 数据层:Task / TaskStore(增删、完成、恢复、JSON 持久化)
+│   ├── task_store.py        # 数据层:Task / TaskStore(增删、完成、恢复、层级、JSON 持久化)
 │   ├── json_io.py           # 原子文件写入
-│   ├── task_item.py         # UI:单个任务项(圆点 + 可编辑文本)
+│   ├── task_item.py         # UI:单个任务项(圆点 + 可编辑文本 + 缩进/折叠箭头)
 │   ├── completed_panel.py   # UI:已完成面板(恢复任务)
 │   ├── history_window.py    # UI:历史任务批量管理窗口
 │   ├── settings_dialog.py   # UI:外观设置窗口
@@ -82,6 +83,13 @@ QT_QPA_PLATFORM=offscreen python -m pytest tests/test_gui_smoke.py -v
 
 - **数据与 UI 分离**:`TaskStore` 只管数据和持久化,不依赖 Qt UI;`MainWindow` 持有 store 并在 UI 交互时调用它。这使数据层可单独单测。
 - **任务对象同一引用**:`TaskItem.task` 与 `store.tasks` 中的对象是同一个,UI 改文本时本地与 store 同步。
+- **两层树的存法**:任务仍是一维数组,父子关系靠 `Task.parent_id`;数组顺序即树序(父项后紧跟子项),
+  父项由"前面最近的顶层任务"推导。层级上限 2(`MAX_DEPTH`),`_normalize_tree()` 在加载时把
+  父项已完成/已删除、层级超限、父项不存在的子项统一提升为顶层,避免出现看不见的孤儿。
+- **级联规则**:完成/删除父项会连带子项;恢复父项只带回"同一批完成"的子项(按 `completed_at` 判断),
+  更早就单独完成的子项保持原状。
+- **列表渲染**:布局里始终保留全部活跃行(折叠的子项只是 `setVisible(False)`),因此布局索引与树序
+  一一对应,`_sync_tree()` 负责顺序/缩进/折叠箭头/显隐,拖拽和缩进都不用做索引换算。
 - **完成动作的边界**:空任务被点完成时直接删除,不进已完成栏(避免空任务堆积)。
 - **圆点不抢焦点**:`TaskItem.dot` 设 `Qt.NoFocus`,点完成时不会触发文本框的 `editingFinished`,避免完成与保存逻辑冲突。
 - **半透明 + 圆角**:窗口 `WA_TranslucentBackground` + 容器 `rgba` 背景,文字保持不透明清晰;圆角外区域透明。

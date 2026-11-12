@@ -67,6 +67,10 @@ _TRANSLATIONS = {
         "task.mark_done": "标记为完成",
         "task.edit": "编辑",
         "task.delete": "删除",
+        "task.indent": "缩进为子项",
+        "task.outdent": "取消缩进",
+        "task.collapse": "折叠子项",
+        "task.expand": "展开子项",
         "task.edit_placeholder": "输入任务…",
         # ---- 设置窗口 ----
         "settings.title": "设置",
@@ -122,6 +126,10 @@ _TRANSLATIONS = {
         "task.mark_done": "Mark as done",
         "task.edit": "Edit",
         "task.delete": "Delete",
+        "task.indent": "Indent as subtask",
+        "task.outdent": "Outdent",
+        "task.collapse": "Collapse subtasks",
+        "task.expand": "Expand subtasks",
         "task.edit_placeholder": "Type a task…",
         # ---- Settings window ----
         "settings.title": "Settings",

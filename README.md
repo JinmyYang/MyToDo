@@ -13,7 +13,7 @@
 
 ## 功能
 
-一个能自定义背景颜色、透明度、字体等外观的简约风格 todo 软件：任务新建、完成、拖拽排序、锁定窗口、历史记录都在一块半透明的桌面便签上完成，数据全部保存在本地。
+一个能自定义背景颜色、透明度、字体等外观的简约风格 todo 软件：任务新建、完成、拖拽排序、两层分组（子任务）、锁定窗口、历史记录都在一块半透明的桌面便签上完成，数据全部保存在本地。
 
 | 低透明度下能看到壁纸 | 已完成栏可展开、恢复任务 |
 |:---:|:---:|
@@ -22,6 +22,17 @@
 | <img src="docs/img/drag-sort.png" width="280"> | <img src="docs/img/locked.png" width="280"> |
 | **设置界面，可自定义外观** | **右键顶部栏可退出程序** |
 | <img src="docs/img/settings.png" width="280"> | <img src="docs/img/quit.png" width="280"> |
+
+### 子任务（两层分组）
+
+一条任务可以缩进成上一条任务的子项，用来做「一级标题 + 二级事项」：
+
+- 编辑任务时按 `Tab` 缩进为子项，`Shift+Tab` 取消缩进；也可以右键菜单选「缩进为子项 / 取消缩进」
+- 有子项的任务会加粗，右侧出现折叠箭头，点一下折叠或展开（状态会记住）
+- 点父项的圆点 = 整组完成；从已完成栏恢复父项时，同一批完成的子项会一起回来
+- 拖拽既能调顺序，也能把任务拖进 / 拖出分组
+
+只支持两层：再深的层级在这么窄的便签里会挤成一团。
 
 ## 安装
 
@@ -81,11 +92,11 @@ project0711/
 ├── mytodo.iss               # Inno Setup 安装脚本
 ├── sticky_tasks/
 │   ├── app_paths.py         # 数据/日志等路径解析
-│   ├── task_store.py        # 数据层(Task / TaskStore)
+│   ├── task_store.py        # 数据层(Task / TaskStore,含两层父子关系)
 │   ├── json_io.py           # 原子文件写入
 │   ├── app_settings.py      # 外观设置模型与主题派生
 │   ├── updater.py           # 检查更新(GitHub Releases API)
-│   ├── task_item.py         # 任务项 widget(圆点 + 可编辑文本)
+│   ├── task_item.py         # 任务项 widget(圆点 + 可编辑文本 + 折叠箭头)
 │   ├── completed_panel.py   # 已完成面板
 │   ├── history_window.py    # 历史任务批量管理窗口
 │   ├── settings_dialog.py   # 外观设置窗口
