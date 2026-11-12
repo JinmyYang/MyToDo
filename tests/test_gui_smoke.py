@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import Qt, QEvent, QPointF, QPoint
-from PySide6.QtGui import QMouseEvent, QFont
+from PySide6.QtGui import QMouseEvent, QFont, QEnterEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel
 
@@ -1309,3 +1309,97 @@ def test_empty_parent_is_completed_instead_of_deleted(app):
         assert store.get(child.id) is not None
         assert store.get(child.id).completed is True
         assert w._active_items == {}
+
+
+def _enter_event(widget):
+    """构造一个合法的 QEnterEvent:enterEvent 只认这个类型。"""
+    pos = QPointF(widget.rect().center())
+    return QEnterEvent(pos, pos, QPointF(widget.mapToGlobal(widget.rect().center())))
+
+
+def _enter_event(widget):
+    """构造一个合法的 QEnterEvent:enterEvent 只认这个类型。"""
+    pos = QPointF(widget.rect().center())
+    return QEnterEvent(pos, pos, QPointF(widget.mapToGlobal(widget.rect().center())))
+
+
+def test_chevron_sits_right_of_plus_and_plus_uses_icon_color(app):
+    """父项右侧的顺序是「加号、箭头」,加号用主题图标色而不是强调蓝。"""
+    with tempfile.TemporaryDirectory() as d:
+        store, w, parent, child, other = _tree_window(Path(d))
+        item = w._active_items[parent.id]
+        lay = item._layout
+
+        assert lay.indexOf(item.plus) < lay.indexOf(item.chev)
+        assert item.chev.isVisible() is True
+        assert item.plus._color == w.theme.icon_color
+        assert item.plus._color != w.theme.accent_color
+
+
+def test_leaving_row_clears_hover_so_rows_do_not_stay_lit(app):
+    """鼠标划过之后只能剩一行高亮:Leave 必须无条件清掉悬停态。"""
+    with tempfile.TemporaryDirectory() as d:
+        store, w, parent, child, other = _tree_window(Path(d))
+        first = w._active_items[parent.id]
+        second = w._active_items[other.id]
+
+        first.enterEvent(_enter_event(first))
+        assert first._hovered is True
+        assert first.plus._active is True
+
+        # 从下往上划过:下一行 Enter,旧一行 Leave
+        second.enterEvent(_enter_event(second))
+        first.leaveEvent(QEvent(QEvent.Leave))
+        app.processEvents()
+
+        assert first._hovered is False
+        assert first.plus._active is False
+        assert second._hovered is True
+        assert [k for k, v in w._active_items.items() if v._hovered] == [other.id]
+
+
+def _enter_event(widget):
+    """构造一个合法的 QEnterEvent:enterEvent 只认这个类型。"""
+    pos = QPointF(widget.rect().center())
+    return QEnterEvent(pos, pos, QPointF(widget.mapToGlobal(widget.rect().center())))
+
+
+def _enter_event(widget):
+    """构造一个合法的 QEnterEvent:enterEvent 只认这个类型。"""
+    pos = QPointF(widget.rect().center())
+    return QEnterEvent(pos, pos, QPointF(widget.mapToGlobal(widget.rect().center())))
+
+
+def test_chevron_sits_right_of_plus_and_plus_uses_icon_color(app):
+    """父项右侧的顺序是「加号、箭头」,加号用主题图标色而不是强调蓝。"""
+    with tempfile.TemporaryDirectory() as d:
+        store, w, parent, child, other = _tree_window(Path(d))
+        item = w._active_items[parent.id]
+        lay = item._layout
+
+        assert lay.indexOf(item.plus) < lay.indexOf(item.chev)
+        assert item.chev.isVisible() is True
+        assert item.plus._color == w.theme.icon_color
+        assert item.plus._color != w.theme.accent_color
+
+
+def test_leaving_row_clears_hover_so_rows_do_not_stay_lit(app):
+    """鼠标划过之后只能剩一行高亮:Leave 必须无条件清掉悬停态。"""
+    with tempfile.TemporaryDirectory() as d:
+        store, w, parent, child, other = _tree_window(Path(d))
+        first = w._active_items[parent.id]
+        second = w._active_items[other.id]
+
+        first.enterEvent(_enter_event(first))
+        assert first._hovered is True
+        assert first.plus._active is True
+
+        # 从下往上划过:下一行 Enter,旧一行 Leave
+        second.enterEvent(_enter_event(second))
+        first.leaveEvent(QEvent(QEvent.Leave))
+        app.processEvents()
+
+        assert first._hovered is False
+        assert first.plus._active is False
+        assert second._hovered is True
+        assert [k for k, v in w._active_items.items() if v._hovered] == [other.id]

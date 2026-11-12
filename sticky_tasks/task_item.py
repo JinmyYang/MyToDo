@@ -186,12 +186,12 @@ class PlusButton(QWidget):
         self.setFocusPolicy(Qt.NoFocus)
         self._available = True      # 这一行能不能加子项(子项行/锁定态不能)
         self._active = False        # 行被悬停时显形
-        self._accent_color = QColor("#5ea0ff")
+        self._color = QColor("#8e9099")
         self.setToolTip(t("task.add_subtask"))
         self._sync_cursor()
 
     def set_theme(self, theme: Theme):
-        self._accent_color = theme.accent_color
+        self._color = theme.icon_color
         self.update()
 
     def set_available(self, available):
@@ -222,7 +222,7 @@ class PlusButton(QWidget):
             return
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        pen = QPen(self._accent_color, 1.5)
+        pen = QPen(self._color, 1.5)
         pen.setCapStyle(Qt.RoundCap)
         p.setPen(pen)
         cx, cy = self.width() / 2, self.height() / 2
@@ -327,16 +327,16 @@ class TaskItem(QWidget):
         self.stack.setCurrentIndex(self._LABEL_PAGE)
         lay.addWidget(self.stack, 1)
 
-        # 折叠箭头:只有父项才显示,隐藏时不占位
-        self.chev = ChevronButton()
-        self.chev.clicked.connect(lambda: self.collapse_toggled.emit(self.task.id))
-        self.chev.setVisible(False)
-        lay.addWidget(self.chev)
-
         # 新建子项的加号:常驻占位,鼠标停在行上才画出来
         self.plus = PlusButton()
         self.plus.clicked.connect(lambda: self.subtask_requested.emit(self.task.id))
         lay.addWidget(self.plus)
+
+        # 折叠箭头:只有父项才显示,放在加号右侧(隐藏时不占位)
+        self.chev = ChevronButton()
+        self.chev.clicked.connect(lambda: self.collapse_toggled.emit(self.task.id))
+        self.chev.setVisible(False)
+        lay.addWidget(self.chev)
         self._sync_plus()   # 子项建出来就没有下一层,先按初始层级定好占位
 
     # ---- 隐藏文本(隐私模式) ----
@@ -448,18 +448,11 @@ class TaskItem(QWidget):
         self.update()
         super().enterEvent(event)
 
-    def mouseMoveEvent(self, event):
-        # 光标从子控件回到行背景时,Leave/Enter 未必成对出现,这里补一次
-        if not self._hovered:
-            self._hovered = True
-            self._sync_plus()
-            self.update()
-        super().mouseMoveEvent(event)
-
     def leaveEvent(self, event):
-        # 光标只是移到了圆点/箭头/加号这些子控件上,整行仍算悬停
-        if self.rect().contains(self.mapFromGlobal(QCursor.pos())):
-            return
+        # 只按 Qt 的 Enter/Leave 判悬停:光标移到圆点/箭头/加号这些子控件上时,
+        # Qt 不会给整行发 Leave,所以这里可以放心无条件清掉。
+        # (曾经在这里用 QCursor.pos() 做二次判断——鼠标贴着行边界缓慢移动时,
+        #  取到的位置往往还在旧行里,Leave 被吞掉,结果一路划过去每行都亮着。)
         self._hovered = False
         self._sync_plus()
         self.update()
