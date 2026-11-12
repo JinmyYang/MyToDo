@@ -408,6 +408,11 @@ class TaskItem(QWidget):
             self.edit.setFont(font)
 
     # ---- 分隔线 + 悬停 ----
+    def _highlight_rect(self):
+        """悬停/拖拽底框:子项跟着内容一起缩进,否则左边会多出一截对不齐。"""
+        left = 4 + self._level * CHILD_INDENT
+        return self.rect().adjusted(left, 0, -4, 0)
+
     def paintEvent(self, event):
         super().paintEvent(event)
         p = QPainter(self)
@@ -424,13 +429,13 @@ class TaskItem(QWidget):
             )
             p.setPen(QPen(self._drag_color, 1))
             p.setBrush(fill)
-            p.drawRoundedRect(self.rect().adjusted(4, 0, -4, 0), 9, 9)
+            p.drawRoundedRect(self._highlight_rect(), 9, 9)
         elif self._hovered and self.stack.currentIndex() == self._LABEL_PAGE:
             p.setPen(Qt.NoPen)
             p.setBrush(self._hover_color)
             # 从 y=0 开始绘制:分隔线画在上一项的底部,若高亮顶部内缩
             # 会与上方分隔线之间露出缝隙。
-            p.drawRoundedRect(self.rect().adjusted(4, 0, -4, 0), 9, 9)
+            p.drawRoundedRect(self._highlight_rect(), 9, 9)
         p.setPen(self._sep_color)
         p.drawLine(
             self._separator_left(), self.height() - 1,

@@ -1463,8 +1463,6 @@ def test_completed_panel_marks_child_completed_alone(app):
         assert store.get(child.id).parent_id == parent.id
 
 
-
-
 def test_drag_persists_when_last_moves_do_not_change_order(app):
     """真实拖动是一小步一小步走的:最后几步往往不再改变顺序,松手仍要落盘。
 
@@ -1545,81 +1543,15 @@ def test_drag_persists_when_last_moves_do_not_change_order(app):
         ]
 
 
-def test_drag_persists_when_last_moves_do_not_change_order(app):
-    """真实拖动是一小步一小步走的:最后几步往往不再改变顺序,松手仍要落盘。
+def test_child_highlight_follows_indent(app):
+    """子项的悬停/拖拽底框跟着缩进一块,左边不会多出一截。"""
+    from sticky_tasks.task_item import CHILD_INDENT
 
-    曾经的 bug:每次移动都覆盖"顺序变过"标志,最后一步若是空操作就被置回 False,
-    松手时整次拖动作废、行又弹回原位。
-    """
     with tempfile.TemporaryDirectory() as d:
-        root = Path(d)
-        store = TaskStore(root / "tasks.json")
-        row_a = store.add("A")
-        row_b = store.add("B")
-        row_c = store.add("C")
-        row_d = store.add("D")
-        w = MainWindow(store, settings_path=root / "settings.json")
-        w.show()
-        app.processEvents()
+        store, w, parent, child, other = _tree_window(Path(d))
+        parent_rect = w._active_items[parent.id]._highlight_rect()
+        child_rect = w._active_items[child.id]._highlight_rect()
 
-        dragged = w._active_items[row_c.id]
-        target = w._active_items[row_b.id]
-        press_global = dragged.label.mapToGlobal(dragged.label.rect().center())
-        press = QMouseEvent(
-            QEvent.MouseButtonPress,
-            QPointF(dragged.label.rect().center()),
-            QPointF(press_global),
-            Qt.LeftButton,
-            Qt.LeftButton,
-            Qt.NoModifier,
-        )
-        assert dragged.eventFilter(dragged.label, press) is True
-        QTest.qWait(dragged.LONG_PRESS_MS + 30)
-        assert dragged._dragging is True
-
-        drop_global = target.mapToGlobal(QPoint(target.width() // 2, target.height() // 4))
-        steps = 6
-        for index in range(1, steps + 1):
-            pos = QPoint(
-                press_global.x() + (drop_global.x() - press_global.x()) * index // steps,
-                press_global.y() + (drop_global.y() - press_global.y()) * index // steps,
-            )
-            move = QMouseEvent(
-                QEvent.MouseMove,
-                QPointF(dragged.label.mapFromGlobal(pos)),
-                QPointF(pos),
-                Qt.NoButton,
-                Qt.LeftButton,
-                Qt.NoModifier,
-            )
-            assert dragged.eventFilter(dragged.label, move) is True
-            app.processEvents()
-
-        # 到了目标位置后再晃两下(顺序不再变化),模拟松手前的停顿
-        for _ in range(2):
-            move = QMouseEvent(
-                QEvent.MouseMove,
-                QPointF(dragged.label.mapFromGlobal(drop_global)),
-                QPointF(drop_global),
-                Qt.NoButton,
-                Qt.LeftButton,
-                Qt.NoModifier,
-            )
-            dragged.eventFilter(dragged.label, move)
-            app.processEvents()
-
-        release = QMouseEvent(
-            QEvent.MouseButtonRelease,
-            QPointF(dragged.label.mapFromGlobal(drop_global)),
-            QPointF(drop_global),
-            Qt.LeftButton,
-            Qt.NoButton,
-            Qt.NoModifier,
-        )
-        assert dragged.eventFilter(dragged.label, release) is True
-        app.processEvents()
-
-        assert [it.task.text for it in w._ordered_task_items()] == ["A", "C", "B", "D"]
-        assert [t.text for t in TaskStore(root / "tasks.json").active_tasks()] == [
-            "A", "C", "B", "D",
-        ]
+        assert parent_rect.left() == 4
+        assert child_rect.left() == 4 + CHILD_INDENT
+        assert child_rect.right() == parent_rect.right()
