@@ -222,9 +222,11 @@ class TaskStore:
         return depth
 
     def _normalize_tree(self):
-        """修正非法父子关系:父项不存在、父项不在活跃列表、超过两层。
+        """修正非法父子关系:父项不存在、层级超限、活跃子项挂在不可见的父项下。
 
-        子项挂在已完成/已删除的父项下会变成"看不见的孤儿",这里统一提升为顶层。
+        子项挂在已完成/已删除的父项下会变成"看不见的孤儿",这种必须提升为顶层;
+        但历史项(自己已完成/已删除)本来就平铺展示,保留 parent_id 才能在历史窗口里
+        标出它属于哪条任务,所以不拆。
         """
         by_id = {task.id: task for task in self.tasks}
         for task in self.tasks:
@@ -232,7 +234,10 @@ class TaskStore:
             if parent is None or parent is task:
                 task.parent_id = None
                 continue
-            if not self._is_active(parent) or self._depth(task) > MAX_DEPTH:
+            if self._depth(task) > MAX_DEPTH:
+                task.parent_id = None
+                continue
+            if self._is_active(task) and not self._is_active(parent):
                 task.parent_id = None
 
     def _promote_if_orphaned(self, task):

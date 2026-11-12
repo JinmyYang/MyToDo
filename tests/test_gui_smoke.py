@@ -1403,3 +1403,75 @@ def test_leaving_row_clears_hover_so_rows_do_not_stay_lit(app):
         assert first.plus._active is False
         assert second._hovered is True
         assert [k for k, v in w._active_items.items() if v._hovered] == [other.id]
+
+
+def test_history_window_shows_parent_task_name(app):
+    """历史列表按时间排,父子不折叠,所以要能看出子项属于哪条任务。"""
+    from sticky_tasks.task_item import TEXT_MASK
+
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        parent = store.add("本周")
+        child = store.add("写周报", parent_id=parent.id)
+        alone = store.add("独立任务")
+        w = MainWindow(store, settings_path=root / "settings.json")
+        w.on_complete(parent.id)      # 父项完成会连带子项
+        app.processEvents()
+
+        w.open_history()
+        history = w._history_win
+        rows = {
+            history.tree.topLevelItem(i).data(0, Qt.UserRole): history.tree.topLevelItem(i)
+            for i in range(history.tree.topLevelItemCount())
+        }
+        assert rows[parent.id].text(1) == "—"
+        assert rows[child.id].text(1) == "本周"
+        assert rows[child.id].text(0) == "写周报"
+        assert alone.id not in rows
+
+        # 隐私模式下上级名称同样要打码
+        history.set_text_hidden(True)
+        rows = {
+            history.tree.topLevelItem(i).data(0, Qt.UserRole): history.tree.topLevelItem(i)
+            for i in range(history.tree.topLevelItemCount())
+        }
+        assert rows[child.id].text(0) == TEXT_MASK
+        assert rows[child.id].text(1) == TEXT_MASK
+        assert rows[parent.id].text(1) == "—"
+
+
+def test_history_window_shows_parent_task_name(app):
+    """历史列表按时间排,父子不折叠,所以要能看出子项属于哪条任务。"""
+    from sticky_tasks.task_item import TEXT_MASK
+
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        store = TaskStore(root / "tasks.json")
+        parent = store.add("本周")
+        child = store.add("写周报", parent_id=parent.id)
+        alone = store.add("独立任务")
+        w = MainWindow(store, settings_path=root / "settings.json")
+        w.on_complete(parent.id)      # 父项完成会连带子项
+        app.processEvents()
+
+        w.open_history()
+        history = w._history_win
+        rows = {
+            history.tree.topLevelItem(i).data(0, Qt.UserRole): history.tree.topLevelItem(i)
+            for i in range(history.tree.topLevelItemCount())
+        }
+        assert rows[parent.id].text(1) == "—"
+        assert rows[child.id].text(1) == "本周"
+        assert rows[child.id].text(0) == "写周报"
+        assert alone.id not in rows
+
+        # 隐私模式下上级名称同样要打码
+        history.set_text_hidden(True)
+        rows = {
+            history.tree.topLevelItem(i).data(0, Qt.UserRole): history.tree.topLevelItem(i)
+            for i in range(history.tree.topLevelItemCount())
+        }
+        assert rows[child.id].text(0) == TEXT_MASK
+        assert rows[child.id].text(1) == TEXT_MASK
+        assert rows[parent.id].text(1) == "—"

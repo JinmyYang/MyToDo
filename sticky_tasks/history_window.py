@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTreeWidget,
-    QTreeWidgetItem, QMessageBox, QAbstractItemView,
+    QTreeWidgetItem, QMessageBox, QAbstractItemView, QHeaderView,
 )
 
 from . import dialogs
@@ -79,15 +79,17 @@ class HistoryWindow(QWidget):
         root.addLayout(title_row)
 
         self.tree = QTreeWidget()
-        self.tree.setColumnCount(3)
-        self.tree.setHeaderLabels(["任务", "状态", "时间"])
+        self.tree.setColumnCount(4)
+        self.tree.setHeaderLabels(["任务", "上级任务", "状态", "时间"])
         self.tree.setRootIsDecorated(False)
         self.tree.setAlternatingRowColors(True)
         self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.tree.header().setStretchLastSection(False)
-        self.tree.header().resizeSection(0, 340)
-        self.tree.header().resizeSection(1, 80)
-        self.tree.header().resizeSection(2, 150)
+        # 任务列吃掉剩余宽度;其余三列按内容给固定宽度
+        self.tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.tree.header().resizeSection(1, 130)
+        self.tree.header().resizeSection(2, 70)
+        self.tree.header().resizeSection(3, 130)
         self.tree.itemChanged.connect(self._update_actions)
         root.addWidget(self.tree, 1)
 
@@ -120,6 +122,7 @@ class HistoryWindow(QWidget):
                 text = TEXT_MASK
             item = QTreeWidgetItem([
                 text,
+                self._parent_text(task),
                 status,
                 self._format_time(stamp),
             ])
@@ -130,6 +133,17 @@ class HistoryWindow(QWidget):
         self.tree.blockSignals(False)
         self.count_label.setText(f"共 {len(tasks)} 项")
         self._update_actions()
+
+    def _parent_text(self, task):
+        """历史列表按时间排序、不折叠父子,所以直接标出上级任务名。"""
+        if not task.parent_id:
+            return "—"
+        parent = self.store.get(task.parent_id)
+        if parent is None:
+            return "—"
+        if self._text_hidden and parent.text:
+            return TEXT_MASK
+        return parent.text or "(空任务)"
 
     def set_text_hidden(self, hidden):
         """隐私模式与主窗口同步:重新填充列表。"""

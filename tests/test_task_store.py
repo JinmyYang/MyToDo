@@ -462,3 +462,55 @@ def test_apply_tree_layout_keeps_parents_at_top_level(tmp_path):
     assert parent.parent_id is None
     assert first.parent_id == parent.id
     assert store.get(first.id).level == 1
+
+
+def test_history_child_keeps_parent_link_after_reload(tmp_path):
+    """历史项要能一直标出上级,重启后不能把这条线索洗掉。"""
+    path = tmp_path / "tasks.json"
+    store = TaskStore(path)
+    parent, first, second = _group(store)
+
+    store.complete(first.id)     # 子项先单独完成
+    store.complete(parent.id)    # 之后整组完成
+
+    loaded = TaskStore(path)
+    assert loaded.get(first.id).parent_id == parent.id
+    assert loaded.get(second.id).parent_id == parent.id
+
+    # 但活跃子项挂在不可见的父项下仍要被提升,否则列表里根本看不到它
+    orphan = TaskStore(tmp_path / "other.json")
+    p = orphan.add("父项")
+    c = orphan.add("子项", parent_id=p.id)
+    orphan.complete(p.id)
+    c.completed = False          # 人为造出"父项已完成、子项还活跃"
+    c.completed_at = None
+    orphan.save()
+
+    reloaded = TaskStore(tmp_path / "other.json")
+    assert reloaded.get(c.id).parent_id is None
+
+
+def test_history_child_keeps_parent_link_after_reload(tmp_path):
+    """历史项要能一直标出上级,重启后不能把这条线索洗掉。"""
+    path = tmp_path / "tasks.json"
+    store = TaskStore(path)
+    parent, first, second = _group(store)
+
+    store.complete(first.id)     # 子项先单独完成
+    store.complete(parent.id)    # 之后整组完成
+
+    loaded = TaskStore(path)
+    assert loaded.get(first.id).parent_id == parent.id
+    assert loaded.get(second.id).parent_id == parent.id
+
+    # 但活跃子项挂在不可见的父项下仍要被提升,否则列表里根本看不到它
+    orphan = TaskStore(tmp_path / "other.json")
+    p = orphan.add("父项")
+    c = orphan.add("子项", parent_id=p.id)
+    orphan.complete(p.id)
+    c.completed = False          # 人为造出"父项已完成、子项还活跃"
+    c.completed_at = None
+    orphan.save()
+
+    reloaded = TaskStore(tmp_path / "other.json")
+    assert reloaded.get(c.id).parent_id is None
