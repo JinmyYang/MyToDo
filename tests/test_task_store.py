@@ -340,16 +340,19 @@ def test_permanent_delete_removes_children_too(tmp_path):
     assert TaskStore(path).get(first.id) is None
 
 
-def test_restoring_child_whose_parent_is_completed_promotes_it(tmp_path):
+def test_restoring_child_brings_its_parent_along(tmp_path):
+    """父项还在已完成里时,恢复子项要把父项一起带回来,而不是把子项提升成顶层。"""
     store = TaskStore(path := tmp_path / "tasks.json")
     parent, first, second = _group(store)
     store.complete(parent.id)
 
-    store.restore(first.id)          # 父项还在已完成里,子项得提升为顶层
+    store.restore(first.id)
 
-    assert store.get(first.id).parent_id is None
-    assert [t.id for t in store.active_tasks()] == [first.id]
-    assert TaskStore(path).get(first.id).parent_id is None
+    assert store.get(first.id).parent_id == parent.id
+    assert [t.id for t in store.active_tasks()] == [parent.id, first.id]
+    assert [t.id for t in store.completed_tasks()] == [second.id]
+    # 落盘后父子关系不变
+    assert TaskStore(path).get(first.id).parent_id == parent.id
 
 
 def test_load_promotes_child_of_completed_parent(tmp_path):
@@ -449,21 +452,6 @@ def test_apply_tree_layout_keeps_parents_at_top_level(tmp_path):
     assert store.get(first.id).level == 1
 
 
-def test_apply_tree_layout_keeps_parents_at_top_level(tmp_path):
-    """带着子项的行不会被排成子项,否则会冒出第三层。"""
-    store = TaskStore(tmp_path / "tasks.json")
-    parent, first, second = _group(store)
-    other = store.add("另一个")
-
-    store.apply_tree_layout([
-        (other.id, 0), (parent.id, 1), (first.id, 1), (second.id, 1),
-    ])
-
-    assert parent.parent_id is None
-    assert first.parent_id == parent.id
-    assert store.get(first.id).level == 1
-
-
 def test_history_child_keeps_parent_link_after_reload(tmp_path):
     """历史项要能一直标出上级,重启后不能把这条线索洗掉。"""
     path = tmp_path / "tasks.json"
@@ -490,119 +478,56 @@ def test_history_child_keeps_parent_link_after_reload(tmp_path):
     assert reloaded.get(c.id).parent_id is None
 
 
-def test_history_child_keeps_parent_link_after_reload(tmp_path):
-    """历史项要能一直标出上级,重启后不能把这条线索洗掉。"""
-    path = tmp_path / "tasks.json"
-    store = TaskStore(path)
-    parent, first, second = _group(store)
-
-    store.complete(first.id)     # 子项先单独完成
-    store.complete(parent.id)    # 之后整组完成
-
-    loaded = TaskStore(path)
-    assert loaded.get(first.id).parent_id == parent.id
-    assert loaded.get(second.id).parent_id == parent.id
-
-    # 但活跃子项挂在不可见的父项下仍要被提升,否则列表里根本看不到它
-    orphan = TaskStore(tmp_path / "other.json")
-    p = orphan.add("父项")
-    c = orphan.add("子项", parent_id=p.id)
-    orphan.complete(p.id)
-    c.completed = False          # 人为造出"父项已完成、子项还活跃"
-    c.completed_at = None
-    orphan.save()
-
-    reloaded = TaskStore(tmp_path / "other.json")
-    assert reloaded.get(c.id).parent_id is None
-
-
-def test_completed_entries_merge_cascade_children(tmp_path):
-    """整组完成时,子项并进父项那一行,只附一个子项数。"""
+def test_completed_entries_list_every_task_with_parent_name(tmp_path):
+    """已完成面板逐条列出;子项标出上级,并说明恢复时要带上父项。"""
     store = TaskStore(tmp_path / "tasks.json")
     parent, first, second = _group(store)
 
     store.complete(parent.id)
 
     entries = store.completed_entries()
-    assert len(entries) == 1
-    task, child_count, parent_text = entries[0]
-    assert task.id == parent.id
-    assert child_count == 2
-    assert parent_text == ""
-    assert store.is_batch_child(first) is True
+    assert [task.id for task, _, _ in entries] == [parent.id, first.id, second.id]
+    meta = {
+        task.id: (parent_text, with_parent)
+        for task, parent_text, with_parent in entries
+    }
+    assert meta[parent.id] == ("", False)
+    assert meta[first.id] == ("本周", True)
 
 
-def test_completed_entries_keep_child_completed_alone(tmp_path):
-    """单独完成的子项仍占一行,并带上上级任务名。"""
-    store = TaskStore(tmp_path / "tasks.json")
-    parent, first, second = _group(store)
-
-    store.complete(first.id)                 # 子项先单独完成
-    first.completed_at = "2026-01-01T09:00:00"
-    store.save()
-    store.complete(parent.id)                # 之后整组完成
-
-    entries = store.completed_entries()
-    by_id = {task.id: (task, count, parent_text) for task, count, parent_text in entries}
-    assert by_id[parent.id][1] == 1          # 只剩 second 是连带完成的
-    assert by_id[first.id][2] == "本周"       # 单独完成的子项标出上级
-    assert by_id[first.id][1] == 0
-    assert store.is_batch_child(first) is False
-
-
-def test_completed_entries_skip_deleted_children(tmp_path):
+def test_restoring_child_brings_parent_back(tmp_path):
+    """点子项恢复:父项作为容器一起回来,兄弟项留在已完成里。"""
     store = TaskStore(tmp_path / "tasks.json")
     parent, first, second = _group(store)
     store.complete(parent.id)
-    store.delete(first.id)                   # 连带完成后再删掉其中一个子项
 
-    entries = store.completed_entries()
+    store.restore(first.id)
 
-    assert [task.id for task, _, _ in entries] == [parent.id]
-    assert entries[0][1] == 1
+    assert [t.id for t in store.ordered_active()] == [parent.id, first.id]
+    assert store.get(first.id).parent_id == parent.id
+    assert [t.id for t in store.completed_tasks()] == [second.id]
 
 
-def test_completed_entries_merge_cascade_children(tmp_path):
-    """整组完成时,子项并进父项那一行,只附一个子项数。"""
+def test_restoring_child_of_deleted_parent_brings_parent_back(tmp_path):
     store = TaskStore(tmp_path / "tasks.json")
     parent, first, second = _group(store)
+    store.delete(parent.id)
 
+    store.restore(first.id)
+
+    assert store.get(parent.id).deleted is False
+    assert store.get(first.id).parent_id == parent.id
+    assert [t.id for t in store.ordered_active()] == [parent.id, first.id]
+
+
+def test_restoring_child_expands_collapsed_parent(tmp_path):
+    """父项若处在折叠态,恢复子项后要展开,否则新回来的行根本看不见。"""
+    store = TaskStore(tmp_path / "tasks.json")
+    parent, first, second = _group(store)
+    store.toggle_collapse(parent.id)
     store.complete(parent.id)
 
-    entries = store.completed_entries()
-    assert len(entries) == 1
-    task, child_count, parent_text = entries[0]
-    assert task.id == parent.id
-    assert child_count == 2
-    assert parent_text == ""
-    assert store.is_batch_child(first) is True
+    store.restore(first.id)
 
-
-def test_completed_entries_keep_child_completed_alone(tmp_path):
-    """单独完成的子项仍占一行,并带上上级任务名。"""
-    store = TaskStore(tmp_path / "tasks.json")
-    parent, first, second = _group(store)
-
-    store.complete(first.id)                 # 子项先单独完成
-    first.completed_at = "2026-01-01T09:00:00"
-    store.save()
-    store.complete(parent.id)                # 之后整组完成
-
-    entries = store.completed_entries()
-    by_id = {task.id: (task, count, parent_text) for task, count, parent_text in entries}
-    assert by_id[parent.id][1] == 1          # 只剩 second 是连带完成的
-    assert by_id[first.id][2] == "本周"       # 单独完成的子项标出上级
-    assert by_id[first.id][1] == 0
-    assert store.is_batch_child(first) is False
-
-
-def test_completed_entries_skip_deleted_children(tmp_path):
-    store = TaskStore(tmp_path / "tasks.json")
-    parent, first, second = _group(store)
-    store.complete(parent.id)
-    store.delete(first.id)                   # 连带完成后再删掉其中一个子项
-
-    entries = store.completed_entries()
-
-    assert [task.id for task, _, _ in entries] == [parent.id]
-    assert entries[0][1] == 1
+    assert parent.collapsed is False
+    assert first.id in [t.id for t in store.visible_active()]

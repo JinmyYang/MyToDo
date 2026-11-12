@@ -145,10 +145,10 @@ class _CompletedRow(QFrame):
         self.setObjectName("completedItem")
         self.setAttribute(Qt.WA_StyledBackground)
         self._task_id = task_id
-        self.label = None       # 任务文本
-        self.hint = None        # 行尾说明:「N 项子项」或「↳ 上级任务」
-        self.child_count = 0    # 一并完成的子项数
-        self.parent_text = ""   # 上级任务名(用来提示归属)
+        self.label = None        # 任务文本
+        self.hint = None         # 行尾说明:「↳ 上级任务」
+        self.parent_text = ""    # 上级任务名(用来提示归属)
+        self.with_parent = False # 恢复时是否要连带把上级也恢复
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
@@ -209,7 +209,7 @@ class CompletedPanel(QWidget):
         self.setStyleSheet(build_panel_qss(theme))
 
     def set_tasks(self, entries):
-        """entries: [(task, 子项数, 上级任务名)] —— 连带完成的子项已并进父项那一行。"""
+        """entries: [(task, 上级任务名, 是否连带恢复上级)]。"""
         # 清空旧行(保留末尾 stretch)
         while self.body.count() > 1:
             item = self.body.takeAt(0)
@@ -218,9 +218,9 @@ class CompletedPanel(QWidget):
                 w.deleteLater()
         self._row_for.clear()
         self._text_for.clear()
-        for task, child_count, parent_text in entries:
+        for task, parent_text, with_parent in entries:
             self._text_for[task.id] = task.text or ""
-            row = self._make_row(task, child_count, parent_text)
+            row = self._make_row(task, parent_text, with_parent)
             self.body.insertWidget(self.body.count() - 1, row)
             self._row_for[task.id] = row
         self.body.activate()
@@ -245,9 +245,7 @@ class CompletedPanel(QWidget):
         return wrap_for_label(text if text else "(空任务)")
 
     def _hint_text(self, row):
-        """行尾说明:子项数优先(父项行),否则提示上级归属(单独完成的子项)。"""
-        if row.child_count:
-            return f"{row.child_count} 项子项"
+        """行尾说明:子项标出它属于哪一组。"""
         if row.parent_text:
             return f"↳ {_elide(self._mask(row.parent_text))}"
         return ""
@@ -287,10 +285,10 @@ class CompletedPanel(QWidget):
         return max(42, sum(heights) + spacing + margins.top() + margins.bottom())
 
 
-    def _make_row(self, task, child_count=0, parent_text=""):
+    def _make_row(self, task, parent_text="", with_parent=False):
         row = _CompletedRow(task.id)
-        row.child_count = child_count
         row.parent_text = parent_text
+        row.with_parent = with_parent
         h = QHBoxLayout(row)
         h.setContentsMargins(10, 5, 6, 5)
         h.setSpacing(8)
@@ -331,7 +329,7 @@ class CompletedPanel(QWidget):
         btn.setFixedSize(22, 22)
         btn.setCursor(QCursor(Qt.PointingHandCursor))
         btn.setFocusPolicy(Qt.NoFocus)
-        btn.setToolTip("恢复整组" if child_count else "恢复到任务列表")
+        btn.setToolTip("连同上级一起恢复" if with_parent else "恢复到任务列表")
         btn.clicked.connect(lambda checked=False, tid=task.id: self.restored.emit(tid))
         h.addWidget(btn)
         row.delete_requested.connect(self.deleted)

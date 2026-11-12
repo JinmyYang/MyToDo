@@ -1317,59 +1317,6 @@ def _enter_event(widget):
     return QEnterEvent(pos, pos, QPointF(widget.mapToGlobal(widget.rect().center())))
 
 
-def _enter_event(widget):
-    """构造一个合法的 QEnterEvent:enterEvent 只认这个类型。"""
-    pos = QPointF(widget.rect().center())
-    return QEnterEvent(pos, pos, QPointF(widget.mapToGlobal(widget.rect().center())))
-
-
-def test_chevron_sits_right_of_plus_and_plus_uses_icon_color(app):
-    """父项右侧的顺序是「加号、箭头」,加号用主题图标色而不是强调蓝。"""
-    with tempfile.TemporaryDirectory() as d:
-        store, w, parent, child, other = _tree_window(Path(d))
-        item = w._active_items[parent.id]
-        lay = item._layout
-
-        assert lay.indexOf(item.plus) < lay.indexOf(item.chev)
-        assert item.chev.isVisible() is True
-        assert item.plus._color == w.theme.icon_color
-        assert item.plus._color != w.theme.accent_color
-
-
-def test_leaving_row_clears_hover_so_rows_do_not_stay_lit(app):
-    """鼠标划过之后只能剩一行高亮:Leave 必须无条件清掉悬停态。"""
-    with tempfile.TemporaryDirectory() as d:
-        store, w, parent, child, other = _tree_window(Path(d))
-        first = w._active_items[parent.id]
-        second = w._active_items[other.id]
-
-        first.enterEvent(_enter_event(first))
-        assert first._hovered is True
-        assert first.plus._active is True
-
-        # 从下往上划过:下一行 Enter,旧一行 Leave
-        second.enterEvent(_enter_event(second))
-        first.leaveEvent(QEvent(QEvent.Leave))
-        app.processEvents()
-
-        assert first._hovered is False
-        assert first.plus._active is False
-        assert second._hovered is True
-        assert [k for k, v in w._active_items.items() if v._hovered] == [other.id]
-
-
-def _enter_event(widget):
-    """构造一个合法的 QEnterEvent:enterEvent 只认这个类型。"""
-    pos = QPointF(widget.rect().center())
-    return QEnterEvent(pos, pos, QPointF(widget.mapToGlobal(widget.rect().center())))
-
-
-def _enter_event(widget):
-    """构造一个合法的 QEnterEvent:enterEvent 只认这个类型。"""
-    pos = QPointF(widget.rect().center())
-    return QEnterEvent(pos, pos, QPointF(widget.mapToGlobal(widget.rect().center())))
-
-
 def test_chevron_sits_right_of_plus_and_plus_uses_icon_color(app):
     """父项右侧的顺序是「加号、箭头」,加号用主题图标色而不是强调蓝。"""
     with tempfile.TemporaryDirectory() as d:
@@ -1441,44 +1388,8 @@ def test_history_window_shows_parent_task_name(app):
         assert rows[parent.id].text(1) == "—"
 
 
-def test_history_window_shows_parent_task_name(app):
-    """历史列表按时间排,父子不折叠,所以要能看出子项属于哪条任务。"""
-    from sticky_tasks.task_item import TEXT_MASK
-
-    with tempfile.TemporaryDirectory() as d:
-        root = Path(d)
-        store = TaskStore(root / "tasks.json")
-        parent = store.add("本周")
-        child = store.add("写周报", parent_id=parent.id)
-        alone = store.add("独立任务")
-        w = MainWindow(store, settings_path=root / "settings.json")
-        w.on_complete(parent.id)      # 父项完成会连带子项
-        app.processEvents()
-
-        w.open_history()
-        history = w._history_win
-        rows = {
-            history.tree.topLevelItem(i).data(0, Qt.UserRole): history.tree.topLevelItem(i)
-            for i in range(history.tree.topLevelItemCount())
-        }
-        assert rows[parent.id].text(1) == "—"
-        assert rows[child.id].text(1) == "本周"
-        assert rows[child.id].text(0) == "写周报"
-        assert alone.id not in rows
-
-        # 隐私模式下上级名称同样要打码
-        history.set_text_hidden(True)
-        rows = {
-            history.tree.topLevelItem(i).data(0, Qt.UserRole): history.tree.topLevelItem(i)
-            for i in range(history.tree.topLevelItemCount())
-        }
-        assert rows[child.id].text(0) == TEXT_MASK
-        assert rows[child.id].text(1) == TEXT_MASK
-        assert rows[parent.id].text(1) == "—"
-
-
-def test_completed_panel_merges_group_and_restores_whole_group(app):
-    """整组完成只占一行,恢复时整组一起回来。"""
+def test_completed_panel_lists_each_task_and_marks_parent(app):
+    """已完成面板逐条列出;子项标出上级,恢复子项时父项一起回来。"""
     with tempfile.TemporaryDirectory() as d:
         store, w, parent, child, other = _tree_window(Path(d))
         w.on_complete(parent.id)
@@ -1486,21 +1397,38 @@ def test_completed_panel_merges_group_and_restores_whole_group(app):
         w.toggle_completed()
         app.processEvents()
 
-        # 子项并进父项一行,不再各占一行
-        assert set(w.completed_panel._row_for) == {parent.id}
-        row = w.completed_panel._row_for[parent.id]
-        assert row.child_count == 1
-        assert row.hint.text() == "1 项子项"
+        # 父项和子项各占一行,子项标出它属于哪一组
+        assert set(w.completed_panel._row_for) == {parent.id, child.id}
+        parent_row = w.completed_panel._row_for[parent.id]
+        child_row = w.completed_panel._row_for[child.id]
+        assert parent_row.hint is None
+        assert child_row.hint.text() == "↳ 本周"
+        assert child_row.with_parent is True
 
-        w.on_restore(parent.id)
+        # 点子项恢复:父项作为容器一起回来,而不是把子项提升成顶层
+        w.on_restore(child.id)
         app.processEvents()
 
-        # 恢复和单条任务一致:整组追加到列表末尾
+        assert store.get(child.id).parent_id == parent.id
         assert [t.id for t in store.ordered_active()] == [other.id, parent.id, child.id]
         assert w.completed_panel._row_for == {}
         assert [r.task.id for r in w._ordered_task_items()] == [
             other.id, parent.id, child.id,
         ]
+
+
+def test_completed_panel_restores_parent_group_from_parent_row(app):
+    """点父项那一行恢复的是整组。"""
+    with tempfile.TemporaryDirectory() as d:
+        store, w, parent, child, other = _tree_window(Path(d))
+        w.on_complete(parent.id)
+        app.processEvents()
+
+        w.on_restore(parent.id)
+        app.processEvents()
+
+        assert [t.id for t in store.ordered_active()] == [other.id, parent.id, child.id]
+        assert w.completed_panel._row_for == {}
 
 
 def test_completed_panel_marks_child_completed_alone(app):
@@ -1520,8 +1448,8 @@ def test_completed_panel_marks_child_completed_alone(app):
         app.processEvents()
 
         row = w.completed_panel._row_for[child.id]
-        assert row.child_count == 0
         assert row.hint.text() == "↳ 本周"
+        assert row.with_parent is False   # 上级还在列表里,无需连带恢复
 
         # 隐私模式:上级名称也要打码
         w.set_text_hidden(True)
@@ -1535,59 +1463,3 @@ def test_completed_panel_marks_child_completed_alone(app):
         assert store.get(child.id).parent_id == parent.id
 
 
-def test_completed_panel_merges_group_and_restores_whole_group(app):
-    """整组完成只占一行,恢复时整组一起回来。"""
-    with tempfile.TemporaryDirectory() as d:
-        store, w, parent, child, other = _tree_window(Path(d))
-        w.on_complete(parent.id)
-        app.processEvents()
-        w.toggle_completed()
-        app.processEvents()
-
-        # 子项并进父项一行,不再各占一行
-        assert set(w.completed_panel._row_for) == {parent.id}
-        row = w.completed_panel._row_for[parent.id]
-        assert row.child_count == 1
-        assert row.hint.text() == "1 项子项"
-
-        w.on_restore(parent.id)
-        app.processEvents()
-
-        # 恢复和单条任务一致:整组追加到列表末尾
-        assert [t.id for t in store.ordered_active()] == [other.id, parent.id, child.id]
-        assert w.completed_panel._row_for == {}
-        assert [r.task.id for r in w._ordered_task_items()] == [
-            other.id, parent.id, child.id,
-        ]
-
-
-def test_completed_panel_marks_child_completed_alone(app):
-    """单独完成的子项自己占一行,标出上级;恢复后回到原分组。"""
-    from sticky_tasks.task_item import TEXT_MASK
-
-    with tempfile.TemporaryDirectory() as d:
-        root = Path(d)
-        store = TaskStore(root / "tasks.json")
-        parent = store.add("本周")
-        child = store.add("写周报", parent_id=parent.id)
-        w = MainWindow(store, settings_path=root / "settings.json")
-        w.show()
-        w.on_complete(child.id)          # 只完成子项,父项还在列表里
-        app.processEvents()
-        w.toggle_completed()
-        app.processEvents()
-
-        row = w.completed_panel._row_for[child.id]
-        assert row.child_count == 0
-        assert row.hint.text() == "↳ 本周"
-
-        # 隐私模式:上级名称也要打码
-        w.set_text_hidden(True)
-        assert row.hint.text() == f"↳ {TEXT_MASK}"
-        w.set_text_hidden(False)
-        assert row.hint.text() == "↳ 本周"
-
-        w.on_restore(child.id)
-        app.processEvents()
-        assert [t.id for t in store.ordered_active()] == [parent.id, child.id]
-        assert store.get(child.id).parent_id == parent.id

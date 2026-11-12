@@ -150,36 +150,19 @@ class TaskStore:
             reverse=True,
         )
 
-    def is_batch_child(self, task):
-        """是不是"跟着父项一起完成"的子项。
-
-        父项完成时会级联完成子项并写同一个时间戳,这类子项在已完成面板里
-        不单独占行:恢复父项时它们本来就一起回来。
-        """
-        parent = self.get(task.parent_id) if task.parent_id else None
-        if parent is None or not parent.completed or parent.deleted:
-            return False
-        if task.completed_at is None or parent.completed_at is None:
-            return False
-        return task.completed_at >= parent.completed_at
-
     def completed_entries(self):
-        """已完成面板的数据源:[(task, 子项数, 上级任务名)]。
+        """已完成面板的数据源:[(task, 上级任务名, 是否要连带恢复上级)]。
 
-        连带完成的子项并到父项那一行(附子项数);单独完成的子项仍占一行,
-        并带上上级任务名,免得看不出它属于哪一组。按完成时间倒序。
+        每条已完成任务各占一行(子项也单独列出来,点了就恢复它);
+        但上级如果也在历史里,恢复时会先把上级带回来,子项才有位置可待。
         """
         entries = []
-        child_counts = {}
         for task in self.completed_tasks():
-            if self.is_batch_child(task):
-                child_counts[task.parent_id] = child_counts.get(task.parent_id, 0) + 1
-                continue
             parent = self.get(task.parent_id) if task.parent_id else None
-            entries.append([task, 0, (parent.text or "") if parent else ""])
-        for entry in entries:
-            entry[1] = child_counts.get(entry[0].id, 0)
-        return [tuple(entry) for entry in entries]
+            parent_text = (parent.text or "") if parent is not None else ""
+            with_parent = parent is not None and not self._is_active(parent)
+            entries.append((task, parent_text, with_parent))
+        return entries
 
     def history_tasks(self):
         """返回已完成或已删除任务，最近发生变更的排在前面。"""
@@ -360,24 +343,36 @@ class TaskStore:
         return t
 
     def restore(self, task_id):
+        """恢复任务。
+
+        - 恢复父项:连带把"同一批完成"的子项一起带回来(整组复位)
+        - 恢复子项:只把上级恢复成容器,点哪条回哪条,兄弟项留在已完成里
+        子项单独回升到顶层会丢掉它属于哪个分组,所以必须先把上级带回来。
+        """
         t = self.get(task_id)
-        if t is None:
-            return None
-        batch = [t] + self._same_batch_descendants(t)
-        for task in batch:
+        if t is None or self._is_active(t):
+            return t
+        if t.parent_id:
+            parent = self.get(t.parent_id)
+            if parent is not None and not self._is_active(parent):
+                self._restore_tasks([parent])
+                parent.collapsed = False    # 恢复出来的子项得看得见
+        self._restore_tasks([t] + self._same_batch_descendants(t))
+        return t
+
+    def _restore_tasks(self, tasks):
+        """把一批任务改回活跃,并挪到数组末尾(与 UI 追加到列表末尾一致)。"""
+        for task in tasks:
             task.completed = False
             task.completed_at = None
             task.deleted = False
             task.deleted_at = None
             self._promote_if_orphaned(task)
-        # UI 上恢复的任务追加到列表末尾,存储顺序须与之保持一致,
-        # 否则重启后任务会跳回原位置。
-        for task in batch:
+        for task in tasks:
             if task in self.tasks:
                 self.tasks.remove(task)
-        self.tasks.extend(batch)
+        self.tasks.extend(tasks)
         self.save()
-        return t
 
     def _same_batch_descendants(self, task):
         """跟父项同一批完成的子项;更早就完成的子项保持原状,不被连带恢复。"""
