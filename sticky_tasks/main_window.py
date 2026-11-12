@@ -926,7 +926,10 @@ class MainWindow(QWidget):
             self.list_layout.insertWidget(insert_at + offset, widget)
         self.list_layout.activate()
         dragged.set_level(level)
-        self._task_drag_order_changed = self._drag_signature() != before
+        # 标志必须"一旦变过就保持":真实拖动是一小步一小步移动的,最后几步
+        # 往往不改变顺序,若每次都覆盖成 False,松手时就会丢掉整次拖动。
+        if self._drag_signature() != before:
+            self._task_drag_order_changed = True
 
     def _auto_scroll_task_drag(self):
         if self._dragged_task_id is None or self._task_drag_global_pos is None:
